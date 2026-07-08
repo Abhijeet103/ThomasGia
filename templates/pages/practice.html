@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section">
+    <div class="practice-hero-grid">
+        <article class="card video-card practice-top-card">
+            <span class="kicker">Video</span>
+            <h2>GIA test walkthrough</h2>
+            <div class="video-placeholder">
+                <div class="video-placeholder-screen">
+                    <span class="video-play">▶</span>
+                </div>
+                <div class="video-placeholder-meta">
+                    <strong>Dummy video layout</strong>
+                    <span class="muted">A video explaining the GIA test and its sections will appear here.</span>
+                </div>
+            </div>
+        </article>
+        <article class="card practice-top-card practice-full-test-card">
+            <h2>Full Test</h2>
+            <p>All five sections in one flow, designed to feel very close to the real Thomas GIA test experience.</p>
+            <p class="muted practice-full-test-note">Practice Thomas GIA like a full test in one focused sitting.</p>
+            <div class="practice-card-meta">
+                <span>
+                    <svg viewBox="0 0 24 24" class="practice-meta-icon" aria-hidden="true">
+                        <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    5 sections
+                </span>
+                <span>
+                    <svg viewBox="0 0 24 24" class="practice-meta-icon" aria-hidden="true">
+                        <path d="M12 7v5l3 3M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    ~45 min
+                </span>
+            </div>
+            <a href="{% url 'pages:full-test' %}" class="button practice-full-test-button">Start full test</a>
+        </article>
+    </div>
+
+    <div class="practice-section-header top-gap">
+        <h1 class="section-title practice-sections-title">Sections</h1>
+    </div>
+
+    <div class="practice-card-grid">
+        {% for section in sections %}
+            <article class="card practice-section-card {{ section.theme_class }}">
+                <div class="practice-card-top">
+                    <div class="practice-card-icon" aria-hidden="true">
+                        {% if section.key == "reasoning" %}
+                            <svg viewBox="0 0 24 24" class="practice-icon-svg">
+                                <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.75c.62.43 1 1.12 1 1.87V17h6v-.38c0-.75.38-1.44 1-1.87A7 7 0 0 0 12 2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        {% elif section.key == "perceptual_speed" %}
+                            <svg viewBox="0 0 24 24" class="practice-icon-svg">
+                                <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        {% elif section.key == "number_speed_accuracy" %}
+                            <svg viewBox="0 0 24 24" class="practice-icon-svg">
+                                <path d="M8 4 5 20M19 4l-3 16M3 9h18M2 15h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        {% elif section.key == "word_meaning" %}
+                            <svg viewBox="0 0 24 24" class="practice-icon-svg">
+                                <path d="M4 18V7a2 2 0 0 1 2-2h5M20 18V7a2 2 0 0 0-2-2h-5M9 18l3-8 3 8M10 15h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        {% else %}
+                            <svg viewBox="0 0 24 24" class="practice-icon-svg">
+                                <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Zm0 0v18M4 7.5l8 4.5 8-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                            </svg>
+                        {% endif %}
+                    </div>
+                    <span class="practice-status-chip {{ section.status_class }}">{{ section.status_label }}</span>
+                </div>
+
+                <h2 class="practice-card-title">{{ section.title }}</h2>
+                <p class="practice-card-copy">{{ section.description }}</p>
+
+                <div class="practice-card-meta">
+                    <span>
+                        <svg viewBox="0 0 24 24" class="practice-meta-icon" aria-hidden="true">
+                            <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        {{ section.question_count }} questions
+                    </span>
+                    <span>
+                        <svg viewBox="0 0 24 24" class="practice-meta-icon" aria-hidden="true">
+                            <path d="M12 7v5l3 3M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        {{ section.duration_minutes }} min
+                    </span>
+                </div>
+
+                <div class="practice-card-stats">
+                    <span>{{ section.tests_taken }} tests given</span>
+                    <span>{{ section.practice_solved }} practice solved</span>
+                </div>
+
+                <div class="practice-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ section.progress_percent }}">
+                    <span class="practice-progress-fill" style="width: {{ section.progress_percent }}%;"></span>
+                </div>
+
+                <div class="practice-card-actions">
+                    <a href="{{ section.action_url }}" class="button practice-button-primary">{{ section.action_label }}</a>
+                </div>
+            </article>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

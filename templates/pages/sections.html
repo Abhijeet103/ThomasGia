@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section">
+    <h1 class="section-title">All five GIA sections</h1>
+    <p class="section-copy">Each section has its own landing page, test mode, and sample question previews.</p>
+    <div class="section-list">
+        {% for section in sections %}
+            <article class="card section-item">
+                <span class="kicker">{{ section.time_limit_seconds }} sec</span>
+                <h2>{{ section.title }}</h2>
+                <p>{{ section.description }}</p>
+                <p class="muted">Sample questions available: {{ section.sample_count }}</p>
+                <a href="{% url 'pages:section-detail' section.key %}" class="button top-gap-small">View</a>
+            </article>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

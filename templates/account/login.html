@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section">
+    <div class="login-layout">
+        <article class="card login-panel">
+            <span class="eyebrow">Login</span>
+            <h1 class="section-title">Sign in to PrepGIA</h1>
+            <p class="section-copy">
+                Use your email and password, or continue with Google. Every user begins on the free role and upgrades after payment.
+            </p>
+
+            <form method="post" action="{% url 'account_login' %}" class="login-form">
+                {% csrf_token %}
+                {% if redirect_field_value %}
+                    <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+                {% endif %}
+                <label class="form-field">
+                    <span>Email</span>
+                    {{ form.login }}
+                </label>
+                <label class="form-field">
+                    <span>Password</span>
+                    {{ form.password }}
+                </label>
+                {% if form.remember %}
+                    <label class="form-check">
+                        {{ form.remember }}
+                        <span>Remember me</span>
+                    </label>
+                {% endif %}
+                {% if form.non_field_errors %}
+                    <div class="form-errors">
+                        {% for error in form.non_field_errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+                <button type="submit" class="button login-submit">Sign in with email</button>
+            </form>
+
+            <div class="login-divider"><span>or</span></div>
+            <a href="/accounts/google/login/" class="button-secondary login-google">Continue with Google</a>
+        </article>
+    </div>
+</section>
+{% endblock %}

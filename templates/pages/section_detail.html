@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section">
+    <a href="{% url 'pages:practice' %}" class="back-link">← Back to practice</a>
+    <span class="eyebrow">Section detail</span>
+    <h1 class="section-title">{{ section.title }} {{ section.mode|title }}</h1>
+    <p class="section-copy">{{ section.description }}</p>
+    <div class="section-overview-grid">
+        <article class="card">
+            <h2>How this section works</h2>
+            <p>{{ section.instruction }}</p>
+            {% if section.mode == "test" %}
+                <p class="muted">Timed section: {{ section.time_limit_seconds }} seconds total. No per-question timer.</p>
+            {% else %}
+                <p class="muted">Practice mode gives immediate right or wrong feedback.</p>
+            {% endif %}
+        </article>
+        <article class="card video-card">
+            <span class="kicker">Video</span>
+            <h2>{{ section.video.title }}</h2>
+            <div class="video-placeholder">
+                <div class="video-placeholder-screen">
+                    <span class="video-play">▶</span>
+                </div>
+                <div class="video-placeholder-meta">
+                    <strong>Dummy video layout</strong>
+                    <span class="muted">S3 video will appear here later. Duration {{ section.video.duration }}.</span>
+                </div>
+            </div>
+        </article>
+    </div>
+    <div class="hero-actions">
+        <a href="{% url 'pages:section-detail' section.key %}?mode=practice" class="{% if section.mode == 'practice' %}button{% else %}button-secondary{% endif %}">Practice mode</a>
+        <a href="{% url 'pages:section-detail' section.key %}?mode=test" class="{% if section.mode == 'test' %}button{% else %}button-secondary{% endif %}">Test mode</a>
+    </div>
+    {% if section.mode == "test" %}
+        <p class="muted">Time limit: {{ section.time_limit_seconds }} seconds</p>
+    {% else %}
+        <p class="muted">Practice mode has no time limit and shows immediate feedback.</p>
+    {% endif %}
+    <div class="notice">One player only. The card updates in place as you move through the section.</div>
+
+    {% if section.previews %}
+        {{ section.previews|json_script:"section-question-data" }}
+        <section
+            class="card test-player"
+            data-test-player
+            data-section-key="{{ section.key }}"
+            data-total-questions="{{ section.previews|length }}"
+            data-mode="{{ section.mode }}"
+            data-time-limit-seconds="{{ section.time_limit_seconds }}"
+            data-dashboard-url="{% url 'pages:dashboard' %}"
+            data-submit-url="{{ section.submit_url }}"
+            data-attempt-id="{{ section.attempt_id|default:'' }}"
+            data-practice-progress-url="{% url 'practice-progress' %}"
+        >
+            <div class="test-player-topbar">
+                <p class="muted test-timer" data-test-timer {% if section.mode != "test" %}hidden{% endif %}></p>
+            </div>
+            <div class="feedback-banner" data-feedback-banner hidden></div>
+
+            {% if section.mode == "test" %}
+                <div class="test-stage" data-test-stage="intro">
+                    <p class="muted test-label">Test mode</p>
+                    <h3>Enter fullscreen to begin</h3>
+                    <p class="muted">This timed section starts only after fullscreen mode is enabled.</p>
+                    <button type="button" class="button" data-test-fullscreen-start>Enter fullscreen and start</button>
+                </div>
+            {% endif %}
+
+            <div class="test-stage" data-test-stage="context" {% if section.mode == "test" %}hidden{% endif %}>
+                <p class="muted test-label">Context</p>
+                <div class="test-context test-context-large test-shell" data-test-context></div>
+                <p class="muted">Click anywhere on the context card to reveal the question.</p>
+            </div>
+
+            <div class="test-stage" data-test-stage="question" hidden>
+                <p class="muted test-label">Question</p>
+                <div class="test-context test-context-large test-shell">
+                    <h3 class="test-question" data-test-question></h3>
+                    <div class="answer-options" data-test-options></div>
+                </div>
+            </div>
+
+            <div class="test-stage" data-test-stage="complete" hidden>
+                <p class="muted test-label">Section complete</p>
+                <h3>You have reached the end of this question set.</h3>
+                <p class="muted" data-complete-summary>You can refresh the page to practice this section again.</p>
+            </div>
+        </section>
+    {% else %}
+        <article class="card">
+            <h3>No questions yet</h3>
+            <p>Generate and export questions to see the test player here.</p>
+        </article>
+    {% endif %}
+</section>
+{% endblock %}

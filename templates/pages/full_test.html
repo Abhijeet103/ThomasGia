@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section">
+    <span class="eyebrow">Full test</span>
+    <h1 class="section-title">Full guided practice and timed test</h1>
+    <p class="section-copy">
+        Each section is shown one by one. First you get instructions, then eight practice questions with instant feedback, then the timed test for that section.
+    </p>
+
+    {% if full_test_access_error %}
+        <div class="notice">{{ full_test_access_error }}</div>
+    {% elif full_test_data %}
+    {{ full_test_data|json_script:"full-test-data" }}
+    <section class="card full-test-player" data-full-test-player data-attempt-id="{{ full_test_attempt_id }}" data-question-url="{{ full_test_question_url }}" data-submit-url="{{ full_test_submit_url }}" data-dashboard-url="{% url 'pages:dashboard' %}">
+        <div class="test-player-topbar">
+            <p class="muted test-timer" data-full-timer hidden></p>
+        </div>
+
+        <div class="test-stage" data-full-stage="intro">
+            <p class="muted test-label" data-full-phase-label>Section intro</p>
+            <h2 data-full-section-title></h2>
+            <p class="section-copy" data-full-section-description></p>
+            <div class="notice" data-full-instruction></div>
+            <button type="button" class="button" data-full-start>Enter fullscreen and start full test</button>
+        </div>
+
+        <div class="test-stage" data-full-stage="fullscreen" hidden>
+            <p class="muted test-label">Timed test</p>
+            <h3>Enter fullscreen to begin</h3>
+            <p class="muted">The timed part of each section starts only after fullscreen mode is enabled.</p>
+            <button type="button" class="button" data-full-fullscreen-start>Enter fullscreen and start test</button>
+        </div>
+
+        <div class="feedback-banner" data-full-feedback hidden></div>
+
+        <div class="test-stage" data-full-stage="context" hidden>
+            <p class="muted test-label">Context</p>
+            <div class="test-context test-context-large test-shell" data-full-context></div>
+            <p class="muted">Click the context card to reveal the question.</p>
+        </div>
+
+        <div class="test-stage" data-full-stage="question" hidden>
+            <p class="muted test-label">Question</p>
+            <div class="test-context test-context-large test-shell">
+                <h3 class="test-question" data-full-question></h3>
+                <div class="answer-options" data-full-options></div>
+            </div>
+        </div>
+
+        <div class="test-stage" data-full-stage="section-complete" hidden>
+            <p class="muted test-label" data-full-section-complete-label></p>
+            <h3 data-full-section-complete-title></h3>
+            <p class="muted" data-full-section-complete-copy></p>
+            <button type="button" class="button" data-full-next-phase></button>
+        </div>
+
+        <div class="test-stage" data-full-stage="complete" hidden>
+            <p class="muted test-label">Full test complete</p>
+            <h3>You have completed all sections.</h3>
+            <p class="muted" data-full-complete-summary>Refresh the page if you want to run the guided full test again.</p>
+        </div>
+    </section>
+    {% else %}
+        <div class="notice">The full test is not ready yet.</div>
+    {% endif %}
+</section>
+{% endblock %}

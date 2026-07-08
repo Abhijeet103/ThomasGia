@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section">
+    <h1 class="section-title">Pricing built for practice</h1>
+    <p class="section-copy">Every user starts on the free tier with 3 full tests. When Stripe confirms payment on the backend, your role becomes paid until the subscription expiry date.</p>
+    <div class="price-grid">
+        <article class="card price">
+            <span class="kicker">Free</span>
+            <strong>$0</strong>
+            <ul class="list">
+                <li>3 free full tests</li>
+                <li>Section-wise tests</li>
+                <li>Google login</li>
+            </ul>
+        </article>
+        {% for plan in plans %}
+            <article class="card price">
+                <span class="kicker">{{ plan.title }}</span>
+                <strong>{{ plan.price_display }}</strong>
+                <p class="muted">{{ plan.duration_label }}</p>
+                <ul class="list">
+                    <li>Unlimited full tests</li>
+                    <li>Unlimited section-wise tests</li>
+                    <li>{{ plan.summary }}</li>
+                </ul>
+                {% if request.user.is_authenticated %}
+                    <form method="post" action="{% url 'billing-checkout' plan.code %}" class="top-gap-small">
+                        {% csrf_token %}
+                        <button type="submit" class="{% if plan.is_current %}button-secondary button-disabled{% else %}button{% endif %}" {% if plan.is_current %}disabled{% endif %}>
+                            {{ plan.button_label }}
+                        </button>
+                    </form>
+                {% else %}
+                    <a href="{% url 'pages:login' %}?next={% url 'pages:pricing' %}" class="button top-gap-small">{{ plan.button_label }}</a>
+                {% endif %}
+            </article>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

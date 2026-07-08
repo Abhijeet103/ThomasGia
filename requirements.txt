@@ -1,0 +1,23 @@
+# Core Django app
+Django==5.1.4
+django-allauth==65.3.1
+requests==2.32.3
+requests-oauthlib==2.0.0
+oauthlib==3.2.2
+
+# Payments
+stripe==11.6.0
+
+# Production serving and static files
+gunicorn==23.0.0
+whitenoise==6.8.2
+
+# Environment management
+python-dotenv==1.0.1
+PyJWT==2.9.0
+cryptography==43.0.1
+redis==5.2.1
+
+# Optional API/JWT stack if you later expose token-based auth APIs
+# djangorestframework==3.15.2
+# djangorestframework-simplejwt==5.3.1

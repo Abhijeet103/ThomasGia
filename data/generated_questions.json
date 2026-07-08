@@ -1,0 +1,95 @@
+{
+  "generated_at": "2026-07-08T09:06:36.059678+00:00",
+  "questions": [
+    {
+      "id": 1,
+      "section_type": "reasoning",
+      "seed": "reasoning-easy-0-002cea83",
+      "difficulty": "easy",
+      "question_payload_json": "{\"metadata\": {\"difficulty\": \"easy\", \"trait\": \"tall\"}, \"options\": [\"Noah\", \"Maya\", \"Charles\"], \"prompt\": {\"question\": \"Who is the most tall?\", \"statements\": [\"Charles is more tall than Maya.\", \"Maya is more tall than Noah.\"]}, \"question_id\": \"ab426dae-a975-4283-b1e3-50dff6790af4\", \"section_type\": \"reasoning\"}",
+      "correct_answer_json": "{\"answer\": \"Charles\"}",
+      "created_at": "2026-07-07 23:39:27"
+    },
+    {
+      "id": 2,
+      "section_type": "reasoning",
+      "seed": "reasoning-easy-1-a8c1a51a",
+      "difficulty": "easy",
+      "question_payload_json": "{\"metadata\": {\"difficulty\": \"easy\", \"trait\": \"fast\"}, \"options\": [\"Maya\", \"Leo\", \"Tom\"], \"prompt\": {\"question\": \"Who is the least fast?\", \"statements\": [\"Maya is more fast than Tom.\", \"Tom is more fast than Leo.\"]}, \"question_id\": \"bc3bad7a-8f28-4010-b235-fbbcbf34b12c\", \"section_type\": \"reasoning\"}",
+      "correct_answer_json": "{\"answer\": \"Leo\"}",
+      "created_at": "2026-07-07 23:39:27"
+    },
+    {
+      "id": 3,
+      "section_type": "perceptual_speed",
+      "seed": "perceptual_speed-easy-0-bbefd6cc",
+      "difficulty": "easy",
+      "question_payload_json": "{\"metadata\": {\"difficulty\": \"easy\"}, \"options\": [0, 1, 2, 3, 4], \"prompt\": {\"instruction\": \"Count how many pairs show the same letter in different case.\", \"pairs\": [{\"left\": \"J\", \"right\": \"l\"}, {\"left\": \"D\", \"right\": \"d\"}, {\"left\": \"S\", \"right\": \"e\"}, {\"left\": \"J\", \"right\": \"j\"}]}, \"question_id\": \"cf38bc24-2fe8-41d9-8b31-28a811f04287\", \"section_type\": \"perceptual_speed\"}",
+      "correct_answer_json": "{\"answer\": 2}",
+      "created_at": "2026-07-07 23:39:27"
+    },
+    {
+      "id": 4,
+      "section_type": "perceptual_speed",
+      "seed": "perceptual_speed-easy-1-614b86a2",
+      "difficulty": "easy",
+      "question_payload_json": "{\"metadata\": {\"difficulty\": \"easy\"}, \"options\": [0, 1, 2, 3, 4], \"prompt\": {\"instruction\": \"Count how many pairs show the same letter in different case.\", \"pairs\": [{\"left\": \"H\", \"right\": \"o\"}, {\"left\": \"T\", \"right\": \"t\"}, {\"left\": \"K\", \"right\": \"k\"}, {\"left\": \"U\", \"right\": \"b\"}]}, \"question_id\": \"dd342fad-5db0-4383-acb4-4772167a69e9\", \"section_type\": \"perceptual_speed\"}",
+      "correct_answer_json": "{\"answer\": 2}",
+      "created_at": "2026-07-07 23:39:27"
+    },
+    {
+      "id": 5,
+      "section_type": "number_speed_accuracy",
+      "seed": "number_speed_accuracy-easy-0-891a5cdf",
+      "difficulty": "easy",
+      "question_payload_json": "{\"metadata\": {\"difficulty\": \"easy\"}, \"options\": [38, 23, 20], \"prompt\": {\"instruction\": \"Which number is furthest from the middle value?\", \"numbers\": [38, 23, 20]}, \"question_id\": \"c3248f64-3b38-4040-b0fa-1e3f263da3e8\", \"section_type\": \"number_speed_accuracy\"}",
+      "correct_answer_json": "{\"answer\": 38}",
+      "created_at": "2026-07-07 23:39:27"
+    },
+    {
+      "id": 6,
+      "section_type": "number_speed_accuracy",
+      "seed": "number_speed_accuracy-easy-1-1aa51d45",
+      "difficulty": "easy",
+      "question_payload_json": "{\"metadata\": {\"difficulty\": \"easy\"}, \"options\": [43, 35, 40], \"prompt\": {\"instruction\": \"Which number is furthest from the middle value?\", \"numbers\": [43, 35, 40]}, \"question_id\": \"c3b36e85-3130-4d26-931a-6078b59dcb3c\", \"section_type\": \"number_speed_accuracy\"}",
+      "correct_answer_json": "{\"answer\": 35}",
+      "created_at": "2026-07-07 23:39:27"
+    },
+    {
+      "id": 7,
+      "section_type": "word_meaning",
+      "seed": "word_meaning-easy-0-6d940385",
+      "difficulty": "easy",
+      "question_payload_json": "{\"metadata\": {\"difficulty\": \"easy\", \"relationship_type\": \"animals\"}, \"options\": [\"cat\", \"dog\", \"ladder\"], \"prompt\": {\"instruction\": \"Choose the odd one out.\", \"words\": [\"cat\", \"dog\", \"ladder\"]}, \"question_id\": \"9d4e3b0d-cb07-4e4b-94ec-7725ea47f199\", \"section_type\": \"word_meaning\"}",
+      "correct_answer_json": "{\"answer\": \"ladder\"}",
+      "created_at": "2026-07-07 23:39:27"
+    },
+    {
+      "id": 8,
+      "section_type": "word_meaning",
+      "seed": "word_meaning-easy-1-f78191ef",
+      "difficulty": "easy",
+      "question_payload_json": "{\"metadata\": {\"difficulty\": \"easy\", \"relationship_type\": \"planets\"}, \"options\": [\"venus\", \"teapot\", \"mercury\"], \"prompt\": {\"instruction\": \"Choose the odd one out.\", \"words\": [\"venus\", \"teapot\", \"mercury\"]}, \"question_id\": \"454b62df-9335-4e23-b187-6c22c415381a\", \"section_type\": \"word_meaning\"}",
+      "correct_answer_json": "{\"answer\": \"teapot\"}",
+      "created_at": "2026-07-07 23:39:27"
+    },
+    {
+      "id": 9,
+      "section_type": "spatial_visualization",
+      "seed": "spatial_visualization-easy-0-cfcace33",
+      "difficulty": "easy",
+      "question_payload_json": "{\"metadata\": {\"difficulty\": \"easy\"}, \"options\": [\"same\", \"mirrored\"], \"prompt\": {\"instruction\": \"Are the two shapes the same shape rotated, or mirrored?\", \"shape_a\": {\"mirrored\": false, \"points\": [[25.82, 0.0], [8.03, 21.6], [-21.51, 12.0], [-29.89, -23.98], [8.7, -21.28]], \"rotation\": 162}, \"shape_b\": {\"mirrored\": false, \"points\": [[25.82, 0.0], [8.03, 21.6], [-21.51, 12.0], [-29.89, -23.98], [8.7, -21.28]], \"rotation\": 27}}, \"question_id\": \"dc403d65-62d4-4cf6-ba3e-dd9be7dbbbfb\", \"section_type\": \"spatial_visualization\"}",
+      "correct_answer_json": "{\"answer\": \"same\"}",
+      "created_at": "2026-07-07 23:39:27"
+    },
+    {
+      "id": 10,
+      "section_type": "spatial_visualization",
+      "seed": "spatial_visualization-easy-1-7cea318c",
+      "difficulty": "easy",
+      "question_payload_json": "{\"metadata\": {\"difficulty\": \"easy\"}, \"options\": [\"same\", \"mirrored\"], \"prompt\": {\"instruction\": \"Are the two shapes the same shape rotated, or mirrored?\", \"shape_a\": {\"mirrored\": false, \"points\": [[29.98, 0.0], [13.32, 46.19], [-31.01, 19.03], [-25.69, -14.11], [8.59, -26.89]], \"rotation\": 207}, \"shape_b\": {\"mirrored\": false, \"points\": [[29.98, 0.0], [13.32, 46.19], [-31.01, 19.03], [-25.69, -14.11], [8.59, -26.89]], \"rotation\": 177}}, \"question_id\": \"45559d0f-a6ca-48cd-a727-1789c45d757c\", \"section_type\": \"spatial_visualization\"}",
+      "correct_answer_json": "{\"answer\": \"same\"}",
+      "created_at": "2026-07-07 23:39:27"
+    }
+  ]
+}

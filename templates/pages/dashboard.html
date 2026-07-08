@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section">
+    <h1 class="section-title">Your dashboard</h1>
+    <p class="section-copy">This is your account home for role status, subscription state, full test results, and section-wise scores.</p>
+    {% if expired_attempt_count %}
+        <div class="notice">{{ expired_attempt_count }} stale test{{ expired_attempt_count|pluralize }} auto-completed after crossing the 2 hour limit.</div>
+    {% endif %}
+    <div class="dashboard-grid">
+        <article class="card">
+            <h2>Access</h2>
+            <p class="muted">Role: {{ request.user.get_role_display }}</p>
+            <p class="muted">
+                Subscription:
+                {% if active_subscription %}
+                    {{ active_subscription.plan_code }} ({{ active_subscription.status }})
+                {% else %}
+                    none
+                {% endif %}
+            </p>
+            <p class="muted">
+                Subscription expiry:
+                {% if subscription_expires_at %}
+                    {{ subscription_expires_at|date:"d M Y H:i" }}
+                {% else %}
+                    none
+                {% endif %}
+            </p>
+            <p class="muted">Full test status: {{ full_test_decision.message }}</p>
+        </article>
+        <article class="card dashboard-span-2">
+            <h2>Recent attempts</h2>
+            <table class="table dashboard-table-wide dashboard-table-roomy">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Mode</th>
+                        <th>Section</th>
+                        <th>Status</th>
+                        <th>Score</th>
+                        <th>Started</th>
+                        <th>Completed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for attempt in attempts %}
+                        <tr>
+                            <td>#{{ attempt.attempt_id }}</td>
+                            <td>{{ attempt.mode_label }}</td>
+                            <td>{{ attempt.section_title }}</td>
+                            <td>{{ attempt.status_label }}</td>
+                            <td>{{ attempt.score }}</td>
+                            <td>{{ attempt.started_at|date:"d M Y H:i" }}</td>
+                            <td>{% if attempt.completed_at %}{{ attempt.completed_at|date:"d M Y H:i" }}{% else %}-{% endif %}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="7">No attempts yet.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </article>
+        {% if active_attempt_rows %}
+        <article class="card dashboard-span-2">
+            <h2>Active tests</h2>
+            <table class="table dashboard-table-wide dashboard-table-roomy">
+                <thead>
+                    <tr>
+                        <th>Attempt</th>
+                        <th>Mode</th>
+                        <th>Section</th>
+                        <th>Status</th>
+                        <th>Started</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in active_attempt_rows %}
+                        <tr>
+                            <td>#{{ row.attempt_id }}</td>
+                            <td>{{ row.mode_label }}</td>
+                            <td>{{ row.section_title }}</td>
+                            <td>{{ row.status_label }}</td>
+                            <td>{{ row.started_at|date:"d M Y H:i" }}</td>
+                            <td>
+                                <div class="inline-actions">
+                                    {% if row.continue_url %}
+                                        <a href="{{ row.continue_url }}" class="button-secondary button-small">Continue</a>
+                                    {% endif %}
+                                    <form method="post" action="{{ row.end_url }}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="button-secondary button-small">End test</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="6">No active tests right now.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </article>
+        {% endif %}
+        <article class="card dashboard-span-2">
+            <h2>Full test scores</h2>
+            <table class="table dashboard-table-wide dashboard-table-roomy">
+                <thead>
+                    <tr>
+                        <th>Attempt</th>
+                        <th>Completed</th>
+                        <th>Total</th>
+                        {% for label in section_score_headers %}
+                            <th>{{ label }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in full_test_rows %}
+                        <tr>
+                            <td>#{{ row.attempt_id }}</td>
+                            <td>{% if row.completed_at %}{{ row.completed_at|date:"d M Y H:i" }}{% else %}in progress{% endif %}</td>
+                            <td>{{ row.overall_score }}</td>
+                            {% for score in row.ordered_section_scores %}
+                                <td>{{ score }}</td>
+                            {% endfor %}
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="8">No completed full tests yet.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </article>
+        <article class="card dashboard-span-2">
+            <h2>Section-wise test scores</h2>
+            <table class="table dashboard-table-wide dashboard-table-roomy">
+                <thead>
+                    <tr>
+                        <th>Attempt</th>
+                        <th>Section</th>
+                        <th>Completed</th>
+                        <th>Score</th>
+                        <th>Question count</th>
+                        <th>Time limit</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in section_score_rows %}
+                        <tr>
+                            <td>#{{ row.attempt_id }}</td>
+                            <td>{{ row.section_title }}</td>
+                            <td>{% if row.completed_at %}{{ row.completed_at|date:"d M Y H:i" }}{% else %}-{% endif %}</td>
+                            <td>{{ row.score }}</td>
+                            <td>{{ row.question_count }}</td>
+                            <td>{{ row.time_limit_seconds }} sec</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="6">No completed section-wise tests yet.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </article>
+    </div>
+</section>
+{% endblock %}
