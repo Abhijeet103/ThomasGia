@@ -1,46 +1,99 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="hero">
-    <div class="hero-card">
-        <span class="eyebrow">Thomas GIA practice platform</span>
-        <h1>Simple GIA practice for full tests and section-wise tests.</h1>
-        <p>Train for Thomas GIA with a clean practice flow built to help you move faster and prepare with confidence.</p>
-        <div class="hero-actions">
-            <a href="{% url 'pages:practice' %}" class="button">Start practice</a>
+<section class="home-shell">
+    <article class="home-hero-card">
+        <div class="home-hero-copy">
+            <span class="eyebrow">Thomas GIA practice platform</span>
+            <h1>Simple GIA practice for full tests and section-wise tests.</h1>
+            <p>Train for Thomas GIA with a clean, focused practice flow designed to build speed and confidence.</p>
+            <div class="hero-actions">
+                <a href="{% url 'pages:practice' %}" class="button">Start practice</a>
+                <a href="{% url 'pages:pricing' %}" class="button-secondary">View plans</a>
+            </div>
         </div>
-    </div>
-    <aside class="hero-card hero-panel">
-        <h2 class="panel-title">What you get</h2>
-        <div class="stat">
-            <strong>Full test</strong>
-            <span class="muted">Take the complete GIA-style test flow.</span>
+        <div class="home-hero-preview">
+            <div class="home-browser-frame">
+                <div class="home-browser-topbar">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div class="home-test-preview">
+                    <div class="home-test-preview-meta">
+                        <strong>Question 7 of 20</strong>
+                        <span class="home-timer-badge">00:42</span>
+                    </div>
+                    <h2>Which word does not belong with the others?</h2>
+                    <div class="home-answer-grid">
+                        <div class="home-answer-option home-answer-option-selected">A. Sprint</div>
+                        <div class="home-answer-option">B. Marathon</div>
+                        <div class="home-answer-option">C. Relay</div>
+                        <div class="home-answer-option">D. Pillow</div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="stat">
-            <strong>Section-wise test</strong>
-            <span class="muted">Practise one section at a time.</span>
-        </div>
-        <div class="stat">
-            <strong>Made for Thomas GIA</strong>
-            <span class="muted">Short, focused prep without extra clutter.</span>
-        </div>
-        <div class="stat">
-            <strong>Video tips</strong>
-            <span class="muted">Section explainers and quick prep guidance.</span>
-        </div>
-    </aside>
-</section>
+    </article>
 
-<section class="content-section">
-    <h2 class="section-title">Five practice sections</h2>
-    <div class="card-grid">
-        {% for section in sections %}
-            <article class="card">
-                <h3>{{ section.title }}</h3>
-                <p>{{ section.description }}</p>
+    <article class="home-benefits-card">
+        <div class="home-benefit-item">
+            <div class="home-benefit-icon" aria-hidden="true">∞</div>
+            <div>
+                <strong>Unlimited questions</strong>
+                <span>Never run out of material</span>
+            </div>
+        </div>
+        <div class="home-benefit-item">
+            <div class="home-benefit-icon" aria-hidden="true">∞</div>
+            <div>
+                <strong>Unlimited practice</strong>
+                <span>No daily caps or limits</span>
+            </div>
+        </div>
+        <div class="home-benefit-item">
+            <div class="home-benefit-icon" aria-hidden="true">∞</div>
+            <div>
+                <strong>Unlimited full tests</strong>
+                <span>Retake the full flow anytime</span>
+            </div>
+        </div>
+    </article>
+
+    <section class="home-modules-section">
+        <span class="eyebrow">Five practice modules</span>
+        <div class="home-module-strip">
+            <article class="card home-module-card">
+                <svg viewBox="0 0 24 24" class="home-module-icon" aria-hidden="true">
+                    <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.75c.62.43 1 1.12 1 1.87V17h6v-.38c0-.75.38-1.44 1-1.87A7 7 0 0 0 12 2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <h3>Reasoning</h3>
             </article>
-        {% endfor %}
-    </div>
+            <article class="card home-module-card">
+                <svg viewBox="0 0 24 24" class="home-module-icon" aria-hidden="true">
+                    <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <h3>Perceptual Speed</h3>
+            </article>
+            <article class="card home-module-card">
+                <svg viewBox="0 0 24 24" class="home-module-icon" aria-hidden="true">
+                    <path d="M5 18V9M12 18V5M19 18v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                <h3>Number Speed &amp; Accuracy</h3>
+            </article>
+            <article class="card home-module-card">
+                <svg viewBox="0 0 24 24" class="home-module-icon" aria-hidden="true">
+                    <path d="M5 6.5A2.5 2.5 0 0 1 7.5 4H19v14H7.5A2.5 2.5 0 0 0 5 20.5v-14ZM5 6.5A2.5 2.5 0 0 0 7.5 9H19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                </svg>
+                <h3>Word Meaning</h3>
+            </article>
+            <article class="card home-module-card">
+                <svg viewBox="0 0 24 24" class="home-module-icon" aria-hidden="true">
+                    <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Zm0 0v18M4 7.5l8 4.5 8-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                </svg>
+                <h3>Spatial Visualization</h3>
+            </article>
+        </div>
+    </section>
 </section>
-
 {% endblock %}

@@ -53,7 +53,7 @@ class ReasoningGenerator(BaseQuestionGenerator):
 
     def generate(self, difficulty: str, seed: str, conn: sqlite3.Connection | None = None) -> GeneratedQuestion:
         rng = self.rng(seed)
-        entity_count = 3 if difficulty == "easy" else 4
+        entity_count = 2
         names = rng.sample(NAMES, entity_count)
         trait = rng.choice(TRAITS)
         ordered = names[:]
@@ -187,24 +187,27 @@ class WordMeaningGenerator(BaseQuestionGenerator):
 
 class SpatialVisualizationGenerator(BaseQuestionGenerator):
     section_type = "spatial_visualization"
+    LETTERS = ["b", "d", "f", "g", "j", "k", "n", "p", "q", "r", "y"]
 
     def generate(self, difficulty: str, seed: str, conn: sqlite3.Connection | None = None) -> GeneratedQuestion:
         rng = self.rng(seed)
-        vertex_count = 5 if difficulty == "easy" else 7
-        base_points = _make_polygon_points(rng, vertex_count)
-        is_same = rng.choice([True, False])
-        angle_a = rng.randint(0, 330)
-        angle_b = rng.randint(0, 330)
+        letters = rng.sample(self.LETTERS, 2)
+        pairs = []
+        match_count = 0
+        for letter in letters:
+            is_same = rng.choice([True, False])
+            if is_same:
+                match_count += 1
+            pairs.append({"letter": letter, "same": is_same})
 
         payload = {
             "question_id": str(uuid.uuid4()),
             "section_type": self.section_type,
             "prompt": {
-                "instruction": "Are the two shapes the same shape rotated, or mirrored?",
-                "shape_a": {"points": base_points, "rotation": angle_a, "mirrored": False},
-                "shape_b": {"points": base_points, "rotation": angle_b, "mirrored": not is_same},
+                "instruction": "How many pairs show the same image?",
+                "letter_pairs": pairs,
             },
-            "options": ["same", "mirrored"],
+            "options": ["0", "1", "2"],
             "metadata": {"difficulty": difficulty},
         }
         return GeneratedQuestion(
@@ -212,7 +215,7 @@ class SpatialVisualizationGenerator(BaseQuestionGenerator):
             difficulty,
             seed,
             payload,
-            {"answer": "same" if is_same else "mirrored"},
+            {"answer": str(match_count)},
         )
 
 

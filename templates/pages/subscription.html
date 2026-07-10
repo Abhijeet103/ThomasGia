@@ -47,12 +47,14 @@
                             <strong>{{ plan.price_display }}</strong>
                             <span class="muted">{{ plan.duration_label }}</span>
                         </div>
-                        <form method="post" action="{% url 'billing-checkout' plan.code %}">
-                            {% csrf_token %}
-                            <button type="submit" class="{% if plan.is_current %}button-secondary button-disabled{% else %}button{% endif %}" {% if plan.is_current %}disabled{% endif %}>
-                                {{ plan.button_label }}
-                            </button>
-                        </form>
+                        {% if plan.show_action %}
+                            <form method="post" action="{% url 'billing-checkout' plan.code %}">
+                                {% csrf_token %}
+                                <button type="submit" class="{% if plan.is_current %}button-secondary button-disabled{% else %}button{% endif %}" {% if plan.is_current %}disabled{% endif %}>
+                                    {{ plan.button_label }}
+                                </button>
+                            </form>
+                        {% endif %}
                     </div>
                 {% endfor %}
             </div>

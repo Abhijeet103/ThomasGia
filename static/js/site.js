@@ -30,6 +30,7 @@ function initSectionPlayer() {
   const submittedAnswers = [];
 
   const seedEl = player.querySelector("[data-test-seed]");
+  const progressEl = player.querySelector("[data-test-progress]");
   const timerEl = player.querySelector("[data-test-timer]");
   const feedbackEl = player.querySelector("[data-feedback-banner]");
   const completeSummaryEl = player.querySelector("[data-complete-summary]");
@@ -42,6 +43,7 @@ function initSectionPlayer() {
   const completeStage = player.querySelector('[data-test-stage="complete"]');
   const introStage = player.querySelector('[data-test-stage="intro"]');
   const fullscreenStartButton = player.querySelector("[data-test-fullscreen-start]");
+  const endTestButton = player.querySelector("[data-test-end]");
 
   const showStage = (stage) => {
     [introStage, contextStage, questionStage, completeStage].forEach((node) => {
@@ -57,7 +59,7 @@ function initSectionPlayer() {
   const showFeedback = (message, type) => {
     if (!feedbackEl) return;
     feedbackEl.textContent = message;
-    feedbackEl.className = `feedback-banner feedback-${type}`;
+    feedbackEl.className = `section-inline-feedback feedback-${type}`;
     feedbackEl.removeAttribute("hidden");
   };
 
@@ -65,14 +67,25 @@ function initSectionPlayer() {
     if (!feedbackEl) return;
     feedbackEl.setAttribute("hidden", "");
     feedbackEl.textContent = "";
-    feedbackEl.className = "feedback-banner";
+    feedbackEl.className = "section-inline-feedback";
   };
 
   const updateTimer = () => {
-    if (!timerEl || mode !== "test") return;
+    if (!timerEl) return;
+    if (mode !== "test") {
+      timerEl.textContent = "no timer in practice mode";
+      return;
+    }
     const minutes = Math.floor(remainingSeconds / 60);
     const seconds = remainingSeconds % 60;
     timerEl.textContent = `Time left ${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  };
+
+  const updateProgress = () => {
+    if (!progressEl) return;
+    const total = questions.length;
+    const displayIndex = Math.min(currentIndex + 1, total || 1);
+    progressEl.textContent = `Question ${displayIndex} of ${total}`;
   };
 
   const syncPracticeProgress = async () => {
@@ -149,6 +162,8 @@ function initSectionPlayer() {
       return;
     }
 
+    updateProgress();
+
     if (seedEl) {
       seedEl.textContent = item.seed || "";
     }
@@ -166,6 +181,11 @@ function initSectionPlayer() {
         button.className = "answer-option";
         button.textContent = option;
         button.addEventListener("click", () => {
+          if (mode === "practice") {
+            optionsEl.querySelectorAll(".answer-option").forEach((node) => {
+              node.classList.remove("is-selected-correct", "is-selected-wrong");
+            });
+          }
           const selected = String(option);
           const isCorrect = selected === String(item.correct_answer || "");
           if (isCorrect) {
@@ -174,6 +194,7 @@ function initSectionPlayer() {
 
           if (mode === "practice") {
             if (isCorrect) {
+              button.classList.add("is-selected-correct");
               syncPracticeProgress();
               showFeedback("Correct.", "correct");
               if (feedbackTimeout) {
@@ -185,6 +206,7 @@ function initSectionPlayer() {
                 renderQuestion();
               }, 900);
             } else {
+              button.classList.add("is-selected-wrong");
               showFeedback("Wrong. Try again.", "wrong");
             }
           } else {
@@ -215,6 +237,9 @@ function initSectionPlayer() {
   });
 
   if (mode === "test" && timerEl && remainingSeconds > 0) {
+    endTestButton?.addEventListener("click", () => {
+      finishPlayer();
+    });
     fullscreenStartButton?.addEventListener("click", async () => {
       const enteredFullscreen = await requestFullscreenFor(player);
       if (!enteredFullscreen) {
@@ -222,6 +247,7 @@ function initSectionPlayer() {
         return;
       }
       hideFeedback();
+      updateProgress();
       updateTimer();
       timerInterval = window.setInterval(() => {
         remainingSeconds -= 1;
@@ -236,6 +262,8 @@ function initSectionPlayer() {
     return;
   }
 
+  updateProgress();
+  updateTimer();
   renderQuestion();
 }
 
@@ -269,6 +297,16 @@ function initFullTestPlayer() {
   const startButton = player.querySelector("[data-full-start]");
   const fullscreenStartButton = player.querySelector("[data-full-fullscreen-start]");
   const nextPhaseButton = player.querySelector("[data-full-next-phase]");
+  const endTestButton = player.querySelector("[data-full-end-test]");
+
+  const updateEndTestButton = () => {
+    if (!endTestButton) return;
+    if (phase === "practice" || phase === "test") {
+      endTestButton.removeAttribute("hidden");
+    } else {
+      endTestButton.setAttribute("hidden", "");
+    }
+  };
   const sectionCompleteLabelEl = player.querySelector("[data-full-section-complete-label]");
   const sectionCompleteTitleEl = player.querySelector("[data-full-section-complete-title]");
   const sectionCompleteCopyEl = player.querySelector("[data-full-section-complete-copy]");
@@ -472,6 +510,7 @@ function initFullTestPlayer() {
 
     if (phase === "practice") {
       phase = "test-intro";
+      updateEndTestButton();
       if (sectionCompleteLabelEl) sectionCompleteLabelEl.textContent = "Practice complete";
       if (sectionCompleteTitleEl) sectionCompleteTitleEl.textContent = `${section.title} practice complete`;
       if (sectionCompleteCopyEl) sectionCompleteCopyEl.textContent = "Next, start the timed test for this section.";
@@ -503,6 +542,7 @@ function initFullTestPlayer() {
     hideFeedback();
     questionIndex = 0;
     phase = "practice";
+    updateEndTestButton();
     updateTimer();
     renderQuestion();
   });
@@ -516,6 +556,7 @@ function initFullTestPlayer() {
     hideFeedback();
     questionIndex = 0;
     phase = "test";
+    updateEndTestButton();
     startTimer();
     renderQuestion();
   });
@@ -525,6 +566,7 @@ function initFullTestPlayer() {
       if (document.fullscreenElement) {
         questionIndex = 0;
         phase = "test";
+        updateEndTestButton();
         startTimer();
         renderQuestion();
         return;
@@ -532,6 +574,7 @@ function initFullTestPlayer() {
       renderFullscreenStage();
       return;
     }
+    updateEndTestButton();
     renderIntro();
   });
 
@@ -584,19 +627,41 @@ function initFullTestPlayer() {
     showStage(completeStage);
   }
 
+  endTestButton?.addEventListener("click", () => {
+    if (!confirm("End the test now? Your score so far will be saved.")) return;
+    submitFullTest();
+  });
+
+  window.addEventListener("beforeunload", () => {
+    if (isSubmitting || !player.dataset.submitUrl || phase === "complete") return;
+    fetch(player.dataset.submitUrl, {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken"),
+      },
+      body: JSON.stringify({ sections: collectedTestAnswers }),
+    });
+  });
+
   renderIntro();
 }
 
 function renderContext(container, item) {
   container.innerHTML = "";
+  const appendContinuePrompt = () => {};
+
   const addParagraph = (text) => {
     const p = document.createElement("p");
     p.textContent = text;
+    p.style.fontWeight = "700";
     container.appendChild(p);
   };
 
   if (item.context_kind === "statements") {
     (item.context_lines || []).forEach(addParagraph);
+    appendContinuePrompt();
     return;
   }
 
@@ -624,6 +689,7 @@ function renderContext(container, item) {
       pairGrid.appendChild(pairCell);
     });
     container.appendChild(pairGrid);
+    appendContinuePrompt();
     return;
   }
 
@@ -637,6 +703,7 @@ function renderContext(container, item) {
       row.appendChild(chip);
     });
     container.appendChild(row);
+    appendContinuePrompt();
     return;
   }
 
@@ -650,24 +717,26 @@ function renderContext(container, item) {
       row.appendChild(chip);
     });
     container.appendChild(row);
+    appendContinuePrompt();
     return;
   }
 
-  if (item.context_kind === "shapes") {
-    const shapeWrap = document.createElement("div");
-    shapeWrap.className = "shape-wrap";
-    ["shape_a", "shape_b"].forEach((key) => {
-      const shapeData = item.shapes?.[key];
-      const holder = document.createElement("div");
-      holder.className = "shape-holder";
-      holder.appendChild(renderShapeSvg(shapeData));
-      shapeWrap.appendChild(holder);
+  if (item.context_kind === "letter_pairs") {
+    const pairsWrap = document.createElement("div");
+    pairsWrap.className = "spatial-pairs-wrap";
+    (item.letter_pairs || []).forEach((pair) => {
+      const pairEl = document.createElement("div");
+      pairEl.className = "spatial-pair";
+      pairEl.appendChild(renderLetterSvg(pair.letter, false));
+      pairEl.appendChild(renderLetterSvg(pair.letter, !pair.same));
+      pairsWrap.appendChild(pairEl);
     });
-    container.appendChild(shapeWrap);
+    container.appendChild(pairsWrap);
     return;
   }
 
   addParagraph(item.summary || "");
+  appendContinuePrompt();
 }
 
 async function requestFullscreenFor(element) {
@@ -685,31 +754,25 @@ async function requestFullscreenFor(element) {
   }
 }
 
-function renderShapeSvg(shapeData) {
+function renderLetterSvg(letter, mirrored) {
   const svgNS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNS, "svg");
-  svg.setAttribute("viewBox", "-60 -60 120 120");
+  svg.setAttribute("viewBox", "0 0 100 100");
   svg.setAttribute("class", "shape-svg");
 
-  const polygon = document.createElementNS(svgNS, "polygon");
-  const points = (shapeData?.points || []).map((point) => point.join(",")).join(" ");
-  polygon.setAttribute("points", points);
-  polygon.setAttribute("fill", "rgba(15, 118, 110, 0.12)");
-  polygon.setAttribute("stroke", "#0f766e");
-  polygon.setAttribute("stroke-width", "3");
-
-  let transform = "";
-  if (shapeData?.mirrored) {
-    transform += "scale(-1,1) ";
+  const text = document.createElementNS(svgNS, "text");
+  text.setAttribute("x", "50");
+  text.setAttribute("y", "78");
+  text.setAttribute("text-anchor", "middle");
+  text.setAttribute("font-size", "80");
+  text.setAttribute("font-family", "Georgia, serif");
+  text.setAttribute("font-weight", "bold");
+  text.setAttribute("fill", "#0f766e");
+  if (mirrored) {
+    text.setAttribute("transform", "scale(-1,1) translate(-100,0)");
   }
-  if (shapeData?.rotation) {
-    transform += `rotate(${shapeData.rotation})`;
-  }
-  if (transform.trim()) {
-    polygon.setAttribute("transform", transform.trim());
-  }
-
-  svg.appendChild(polygon);
+  text.textContent = letter;
+  svg.appendChild(text);
   return svg;
 }
 
@@ -720,3 +783,13 @@ function getCookie(name) {
     ?.split("=")[1];
   return cookieValue ? decodeURIComponent(cookieValue) : "";
 }
+
+function dismissFlash(msg) {
+  msg.classList.add("flash-hiding");
+  setTimeout(() => msg.remove(), 400);
+}
+
+document.querySelectorAll(".flash-message").forEach((msg) => {
+  msg.querySelector(".flash-close")?.addEventListener("click", () => dismissFlash(msg));
+  setTimeout(() => dismissFlash(msg), 5000);
+});

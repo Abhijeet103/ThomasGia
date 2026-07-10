@@ -2,25 +2,11 @@
 
 {% block content %}
 <section class="content-section">
-    <div class="practice-hero-grid">
-        <article class="card video-card practice-top-card">
-            <span class="kicker">Video</span>
-            <h2>GIA test walkthrough</h2>
-            <div class="video-placeholder">
-                <div class="video-placeholder-screen">
-                    <span class="video-play">▶</span>
-                </div>
-                <div class="video-placeholder-meta">
-                    <strong>Dummy video layout</strong>
-                    <span class="muted">A video explaining the GIA test and its sections will appear here.</span>
-                </div>
-            </div>
-        </article>
-        <article class="card practice-top-card practice-full-test-card">
-            <h2>Full Test</h2>
-            <p>All five sections in one flow, designed to feel very close to the real Thomas GIA test experience.</p>
-            <p class="muted practice-full-test-note">Practice Thomas GIA like a full test in one focused sitting.</p>
-            <div class="practice-card-meta">
+    <article class="card practice-full-banner">
+        <div class="practice-full-banner-copy">
+            <h2>Full test</h2>
+            <p>All five sections in one flow, designed to feel very close to the real GIA.</p>
+            <div class="practice-card-meta practice-full-banner-meta">
                 <span>
                     <svg viewBox="0 0 24 24" class="practice-meta-icon" aria-hidden="true">
                         <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -33,18 +19,27 @@
                     </svg>
                     ~45 min
                 </span>
+                <span>feels like the real GIA</span>
+                <span>
+                    {% if full_test_attempts_left is None %}
+                        ∞ attempts left
+                    {% else %}
+                        {{ full_test_attempts_left }} attempt{{ full_test_attempts_left|pluralize }} left
+                    {% endif %}
+                </span>
             </div>
-            <a href="{% url 'pages:full-test' %}" class="button practice-full-test-button">Start full test</a>
-        </article>
-    </div>
+        </div>
+        <a href="{% url 'pages:full-test' %}" class="button practice-full-banner-button">Start full test</a>
+    </article>
 
     <div class="practice-section-header top-gap">
-        <h1 class="section-title practice-sections-title">Sections</h1>
+        <h1 class="section-title practice-sections-title">Modules</h1>
+        <p class="practice-started-summary">{{ sections_started }} of {{ sections_total }} modules started</p>
     </div>
 
     <div class="practice-card-grid">
         {% for section in sections %}
-            <article class="card practice-section-card {{ section.theme_class }}">
+            <article class="card practice-section-card {{ section.theme_class }} {{ section.status_class }}">
                 <div class="practice-card-top">
                     <div class="practice-card-icon" aria-hidden="true">
                         {% if section.key == "reasoning" %}
@@ -100,7 +95,7 @@
                 </div>
 
                 <div class="practice-card-actions">
-                    <a href="{{ section.action_url }}" class="button practice-button-primary">{{ section.action_label }}</a>
+                    <a href="{{ section.action_url }}" class="{{ section.action_class }}">{{ section.action_label }}</a>
                 </div>
             </article>
         {% endfor %}

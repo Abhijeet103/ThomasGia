@@ -24,14 +24,14 @@
                     <li>Unlimited section-wise tests</li>
                     <li>{{ plan.summary }}</li>
                 </ul>
-                {% if request.user.is_authenticated %}
+                {% if request.user.is_authenticated and plan.show_action %}
                     <form method="post" action="{% url 'billing-checkout' plan.code %}" class="top-gap-small">
                         {% csrf_token %}
                         <button type="submit" class="{% if plan.is_current %}button-secondary button-disabled{% else %}button{% endif %}" {% if plan.is_current %}disabled{% endif %}>
                             {{ plan.button_label }}
                         </button>
                     </form>
-                {% else %}
+                {% elif not request.user.is_authenticated %}
                     <a href="{% url 'pages:login' %}?next={% url 'pages:pricing' %}" class="button top-gap-small">{{ plan.button_label }}</a>
                 {% endif %}
             </article>

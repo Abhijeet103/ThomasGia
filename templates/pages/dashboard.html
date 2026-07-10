@@ -1,67 +1,28 @@
 {% extends "base.html" %}
 
 {% block content %}
+{{ chart_data|json_script:"dashboard-chart-data" }}
+
 <section class="content-section">
-    <h1 class="section-title">Your dashboard</h1>
-    <p class="section-copy">This is your account home for role status, subscription state, full test results, and section-wise scores.</p>
+    <h1 class="section-title">Progress</h1>
     {% if expired_attempt_count %}
         <div class="notice">{{ expired_attempt_count }} stale test{{ expired_attempt_count|pluralize }} auto-completed after crossing the 2 hour limit.</div>
     {% endif %}
+
+    <article class="card dashboard-chart-card">
+        <div class="dashboard-chart-tabs" role="tablist">
+            <button class="dashboard-tab is-active" role="tab" data-chart-tab="full_test">Full test</button>
+            {% for tab in section_tabs %}
+                <button class="dashboard-tab" role="tab" data-chart-tab="{{ tab.key }}">{{ tab.title }}</button>
+            {% endfor %}
+        </div>
+        <div class="dashboard-chart-wrap">
+            <canvas id="score-chart" height="260"></canvas>
+            <p class="dashboard-chart-empty muted" hidden>No completed attempts yet for this selection.</p>
+        </div>
+    </article>
+
     <div class="dashboard-grid">
-        <article class="card">
-            <h2>Access</h2>
-            <p class="muted">Role: {{ request.user.get_role_display }}</p>
-            <p class="muted">
-                Subscription:
-                {% if active_subscription %}
-                    {{ active_subscription.plan_code }} ({{ active_subscription.status }})
-                {% else %}
-                    none
-                {% endif %}
-            </p>
-            <p class="muted">
-                Subscription expiry:
-                {% if subscription_expires_at %}
-                    {{ subscription_expires_at|date:"d M Y H:i" }}
-                {% else %}
-                    none
-                {% endif %}
-            </p>
-            <p class="muted">Full test status: {{ full_test_decision.message }}</p>
-        </article>
-        <article class="card dashboard-span-2">
-            <h2>Recent attempts</h2>
-            <table class="table dashboard-table-wide dashboard-table-roomy">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Mode</th>
-                        <th>Section</th>
-                        <th>Status</th>
-                        <th>Score</th>
-                        <th>Started</th>
-                        <th>Completed</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for attempt in attempts %}
-                        <tr>
-                            <td>#{{ attempt.attempt_id }}</td>
-                            <td>{{ attempt.mode_label }}</td>
-                            <td>{{ attempt.section_title }}</td>
-                            <td>{{ attempt.status_label }}</td>
-                            <td>{{ attempt.score }}</td>
-                            <td>{{ attempt.started_at|date:"d M Y H:i" }}</td>
-                            <td>{% if attempt.completed_at %}{{ attempt.completed_at|date:"d M Y H:i" }}{% else %}-{% endif %}</td>
-                        </tr>
-                    {% empty %}
-                        <tr>
-                            <td colspan="7">No attempts yet.</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </article>
         {% if active_attempt_rows %}
         <article class="card dashboard-span-2">
             <h2>Active tests</h2>
@@ -96,15 +57,46 @@
                                 </div>
                             </td>
                         </tr>
-                    {% empty %}
-                        <tr>
-                            <td colspan="6">No active tests right now.</td>
-                        </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </article>
         {% endif %}
+
+        <article class="card dashboard-span-2">
+            <h2>Recent attempts</h2>
+            <table class="table dashboard-table-wide dashboard-table-roomy">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Mode</th>
+                        <th>Section</th>
+                        <th>Status</th>
+                        <th>Score</th>
+                        <th>Started</th>
+                        <th>Completed</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for attempt in attempts %}
+                        <tr>
+                            <td>#{{ attempt.attempt_id }}</td>
+                            <td>{{ attempt.mode_label }}</td>
+                            <td>{{ attempt.section_title }}</td>
+                            <td>{{ attempt.status_label }}</td>
+                            <td>{{ attempt.score }}</td>
+                            <td>{{ attempt.started_at|date:"d M Y H:i" }}</td>
+                            <td>{% if attempt.completed_at %}{{ attempt.completed_at|date:"d M Y H:i" }}{% else %}-{% endif %}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="7">No attempts yet.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </article>
+
         <article class="card dashboard-span-2">
             <h2>Full test scores</h2>
             <table class="table dashboard-table-wide dashboard-table-roomy">
@@ -136,6 +128,7 @@
                 </tbody>
             </table>
         </article>
+
         <article class="card dashboard-span-2">
             <h2>Section-wise test scores</h2>
             <table class="table dashboard-table-wide dashboard-table-roomy">
@@ -169,4 +162,86 @@
         </article>
     </div>
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    const allData = JSON.parse(document.getElementById("dashboard-chart-data").textContent);
+    const canvas = document.getElementById("score-chart");
+    const emptyMsg = document.querySelector(".dashboard-chart-empty");
+    const tabs = document.querySelectorAll(".dashboard-tab");
+
+    let chart = null;
+
+    function renderChart(key) {
+        const points = allData[key] || [];
+        if (points.length === 0) {
+            canvas.hidden = true;
+            emptyMsg.hidden = false;
+            if (chart) { chart.destroy(); chart = null; }
+            return;
+        }
+        canvas.hidden = false;
+        emptyMsg.hidden = true;
+
+        const labels = points.map(p => p.label);
+        const scores = points.map(p => p.score);
+
+        if (chart) { chart.destroy(); }
+
+        chart = new Chart(canvas, {
+            type: "line",
+            data: {
+                labels,
+                datasets: [{
+                    label: "Score",
+                    data: scores,
+                    borderColor: "#c8a96e",
+                    backgroundColor: "rgba(200,169,110,0.12)",
+                    pointBackgroundColor: "#c8a96e",
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    fill: true,
+                    tension: 0.35,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ` Score: ${ctx.parsed.y}`
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        grid: { color: "rgba(0,0,0,0.06)" },
+                        ticks: { color: "#777" }
+                    },
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: "#777" }
+                    }
+                }
+            }
+        });
+    }
+
+    tabs.forEach(tab => {
+        tab.addEventListener("click", () => {
+            tabs.forEach(t => t.classList.remove("is-active"));
+            tab.classList.add("is-active");
+            renderChart(tab.dataset.chartTab);
+        });
+    });
+
+    renderChart("full_test");
+})();
+</script>
 {% endblock %}

@@ -42,7 +42,6 @@
                                 {% endif %}
                             </div>
                             <div class="user-menu-links">
-                                <a href="{% url 'pages:dashboard' %}">Dashboard</a>
                                 <a href="{% url 'pages:subscription' %}">Subscription</a>
                             </div>
                             <form method="post" action="{% url 'account_logout' %}" class="user-menu-form">
@@ -68,7 +67,10 @@
             {% if messages %}
                 <div class="flash-stack">
                     {% for message in messages %}
-                        <div class="flash-message {{ message.tags }}">{{ message }}</div>
+                        <div class="flash-message {{ message.tags }}">
+                            <span class="flash-text">{{ message }}</span>
+                            <button class="flash-close" aria-label="Dismiss">&times;</button>
+                        </div>
                     {% endfor %}
                 </div>
             {% endif %}
@@ -80,5 +82,6 @@
         </footer>
     </div>
     <script src="{% static 'js/site.js' %}"></script>
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>

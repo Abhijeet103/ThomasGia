@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from dataclasses import asdict
 
 from allauth.account.forms import LoginForm
@@ -60,15 +61,9 @@ SECTION_INSTRUCTIONS = {
     SectionType.SPATIAL_VISUALIZATION: "Study the shapes first, then decide whether they are the same when rotated or if one is mirrored.",
 }
 
-SECTION_VIDEO_PLACEHOLDERS = {
-    SectionType.REASONING: {"title": "Reasoning walkthrough", "duration": "04:12"},
-    SectionType.PERCEPTUAL_SPEED: {"title": "Perceptual speed walkthrough", "duration": "03:05"},
-    SectionType.NUMBER_SPEED_ACCURACY: {"title": "Number speed walkthrough", "duration": "03:48"},
-    SectionType.WORD_MEANING: {"title": "Word meaning walkthrough", "duration": "02:56"},
-    SectionType.SPATIAL_VISUALIZATION: {"title": "Spatial walkthrough", "duration": "04:20"},
-}
-
 SECTION_PRACTICE_GENERATION_COUNT = 40
+SECTION_PRACTICE_PAID_COUNT = 100
+SECTION_PRACTICE_GOAL = 50
 logger = logging.getLogger(__name__)
 
 
@@ -134,12 +129,32 @@ class PracticePageView(TemplateView):
     template_name = "pages/practice.html"
 
     def get_context_data(self, **kwargs):
+        from backend.apps.assessments.services import FREE_FULL_TEST_LIMIT, FREE_SECTION_TEST_LIMIT
+        from backend.apps.accounts.models import UserRole
+        from backend.apps.assessments.models import Attempt, AttemptMode
         context = super().get_context_data(**kwargs)
+        sections = _practice_section_cards(self.request)
+        user = self.request.user
+        if user.is_authenticated and getattr(user, "role", UserRole.FREE) == UserRole.PAID:
+            full_test_attempts_left = None
+            module_test_attempts_left = None
+        elif user.is_authenticated:
+            full_used = Attempt.objects.filter(user=user, mode=AttemptMode.FULL_TEST).count()
+            module_used = Attempt.objects.filter(user=user, mode=AttemptMode.SECTION).count()
+            full_test_attempts_left = max(0, FREE_FULL_TEST_LIMIT - full_used)
+            module_test_attempts_left = max(0, FREE_SECTION_TEST_LIMIT - module_used)
+        else:
+            full_test_attempts_left = FREE_FULL_TEST_LIMIT
+            module_test_attempts_left = FREE_SECTION_TEST_LIMIT
         context.update(
             {
                 "page_title": "Practice Tests | PrepGIA",
                 "meta_description": "Choose full test or section-wise Thomas GIA practice modes.",
-                "sections": _practice_section_cards(self.request),
+                "sections": sections,
+                "sections_started": sum(1 for section in sections if section["status_class"] != "status-not-started"),
+                "sections_total": len(sections),
+                "full_test_attempts_left": full_test_attempts_left,
+                "module_test_attempts_left": module_test_attempts_left,
             }
         )
         return context
@@ -221,14 +236,19 @@ class SectionDetailPageView(TemplateView):
         meta = SECTION_META[section_type]
         section_attempt_id = None
         section_submit_url = ""
+        section_access_error = ""
         if mode == "test" and self.request.user.is_authenticated:
-            attempt = get_or_create_section_attempt(self.request.user, section_type)
-            section_attempt_id = attempt.id
-            attempt_section = next(iter(attempt.sections.all()), None)
-            previews = [_build_generated_preview(item) for item in (attempt_section.question_payload if attempt_section else [])]
-            section_submit_url = f"/api/tests/section-tests/{section_attempt_id}/submit/" if section_attempt_id else ""
+            try:
+                attempt = get_or_create_section_attempt(self.request.user, section_type)
+                section_attempt_id = attempt.id
+                attempt_section = next(iter(attempt.sections.all()), None)
+                previews = [_build_generated_preview(item) for item in (attempt_section.question_payload if attempt_section else [])]
+                section_submit_url = f"/api/tests/section-tests/{section_attempt_id}/submit/" if section_attempt_id else ""
+            except PermissionError as exc:
+                section_access_error = str(exc)
+                previews = []
         else:
-            previews = _build_section_questions(section_type, mode)
+            previews = _build_section_questions(section_type, mode, user=self.request.user)
         context.update(
             {
                 "page_title": f"{meta['title']} {mode.title()} | PrepGIA",
@@ -239,11 +259,12 @@ class SectionDetailPageView(TemplateView):
                     "description": meta["description"],
                     "instruction": SECTION_INSTRUCTIONS[section_type],
                     "time_limit_seconds": SECTION_TIME_LIMITS[section_type],
+                    "question_count": len(previews),
                     "previews": previews,
                     "mode": mode,
-                    "video": SECTION_VIDEO_PLACEHOLDERS[section_type],
                     "attempt_id": section_attempt_id,
                     "submit_url": section_submit_url,
+                    "access_error": section_access_error,
                 },
             }
         )
@@ -301,13 +322,10 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
             )
             .order_by("-started_at")
         )
-        recent_attempts = attempts[:10]
+        recent_attempts = attempts[:5]
         active_attempts = [attempt for attempt in attempts if attempt.status in {AttemptStatus.CREATED, AttemptStatus.IN_PROGRESS}]
         full_test_attempts = [attempt for attempt in attempts if attempt.mode == AttemptMode.FULL_TEST and attempt.status == "completed"][:10]
         section_attempts = [attempt for attempt in attempts if attempt.mode == AttemptMode.SECTION and attempt.status == "completed"][:20]
-        active_subscription = self.request.user.subscriptions.filter(status="active").first()
-        full_test_decision = can_start_attempt(self.request.user, AttemptMode.FULL_TEST)
-
         active_attempt_rows = []
         for attempt in active_attempts:
             first_section = next(iter(attempt.sections.all()), None)
@@ -370,6 +388,34 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
                 }
             )
 
+        # Build chart data keyed by "full_test" and each section type
+        chart_data = {"full_test": []}
+        for key in SECTION_META:
+            chart_data[str(key)] = []
+
+        for i, attempt in enumerate(reversed(full_test_attempts), start=1):
+            score = attempt.overall_adjusted_score
+            label = attempt.completed_at.strftime("%-d %b") if attempt.completed_at else f"#{i}"
+            chart_data["full_test"].append({"label": label, "score": score if score is not None else 0})
+
+        section_chart_attempts = (
+            self.request.user.attempts.filter(mode=AttemptMode.SECTION, status="completed")
+            .prefetch_related(Prefetch("sections", queryset=AttemptSection.objects.order_by("order_index")))
+            .order_by("completed_at")
+        )
+        section_counters = {str(key): 0 for key in SECTION_META}
+        for attempt in section_chart_attempts:
+            section = next(iter(attempt.sections.all()), None)
+            if section is None:
+                continue
+            key = str(section.section_type)
+            section_counters[key] += 1
+            label = attempt.completed_at.strftime("%-d %b") if attempt.completed_at else f"#{section_counters[key]}"
+            score = section.adjusted_score
+            chart_data[key].append({"label": label, "score": score if score is not None else 0})
+
+        section_tabs = [{"key": str(k), "title": v["title"]} for k, v in SECTION_META.items()]
+
         context.update(
             {
                 "page_title": "Dashboard | PrepGIA",
@@ -378,11 +424,10 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
                 "attempts": recent_attempt_rows,
                 "full_test_rows": full_test_rows,
                 "section_score_rows": section_score_rows,
-                "active_subscription": active_subscription,
-                "full_test_decision": full_test_decision,
                 "section_score_headers": [SECTION_META[key]["title"] for key in SECTION_META],
-                "subscription_expires_at": self.request.user.subscription_expires_at,
                 "expired_attempt_count": expired_count,
+                "chart_data": chart_data,
+                "section_tabs": section_tabs,
             }
         )
         return context
@@ -420,7 +465,7 @@ def _practice_section_cards(request):
         practice_solved = progress.practice_questions_solved if progress else 0
         tests_taken = progress.tests_taken if progress else 0
         active_attempt = active_attempts.get(key)
-        practice_goal = 40
+        practice_goal = SECTION_PRACTICE_GOAL
         test_goal = 10
         practice_ratio = min(practice_solved / practice_goal, 1) if practice_goal else 0
         test_ratio = min(tests_taken / test_goal, 1) if test_goal else 0
@@ -436,19 +481,23 @@ def _practice_section_cards(request):
             status_label = "Not started"
             status_class = "status-not-started"
 
+        is_started = status_class != "status-not-started"
+        action_label = "Resume" if is_started else "Start"
+
         cards.append(
             {
                 "key": key,
                 "title": meta["title"],
                 "description": meta["description"],
-                "question_count": SECTION_PRACTICE_GENERATION_COUNT,
+                "question_count": max(1, SECTION_TIME_LIMITS[key] // 2),
                 "duration_minutes": max(1, SECTION_TIME_LIMITS[key] // 60),
                 "practice_solved": practice_solved,
                 "tests_taken": tests_taken,
                 "progress_percent": progress_percent,
                 "status_label": status_label,
                 "status_class": status_class,
-                "action_label": "Resume" if (active_attempt or practice_solved > 0 or tests_taken > 0) else "Start",
+                "action_label": action_label,
+                "action_class": "practice-button-secondary" if status_class == "status-in-progress" else "practice-button-primary",
                 "action_url": f"{reverse('pages:section-detail', args=[key])}?mode={'test' if active_attempt else 'practice'}",
                 "theme_class": f"section-theme-{index % 3}",
             }
@@ -456,14 +505,21 @@ def _practice_section_cards(request):
     return cards
 
 
-def _build_section_questions(section_type: str, mode: str) -> list[dict]:
+def _build_section_questions(section_type: str, mode: str, user=None) -> list[dict]:
+    from backend.apps.assessments.services import FREE_PRACTICE_QUESTION_LIMIT
+    from backend.apps.accounts.models import UserRole
     difficulty = "easy" if mode == "practice" else "medium"
-    question_count = SECTION_PRACTICE_GENERATION_COUNT if mode == "practice" else SECTION_TIME_LIMITS[section_type]
+    if mode == "practice":
+        is_free = user is None or not user.is_authenticated or getattr(user, "role", UserRole.FREE) == UserRole.FREE
+        question_count = FREE_PRACTICE_QUESTION_LIMIT if is_free else SECTION_PRACTICE_PAID_COUNT
+    else:
+        question_count = SECTION_TIME_LIMITS[section_type]
+    session_id = uuid.uuid4().hex
     conn = get_connection(DEFAULT_DB_PATH)
     try:
         questions = []
         for index in range(question_count):
-            seed = f"section:{section_type}:{mode}:{difficulty}:{index}"
+            seed = f"section:{section_type}:{mode}:{difficulty}:{session_id}:{index}"
             generated = generate_question(section_type, difficulty, seed, conn=conn)
             questions.append(_build_generated_preview(asdict(generated)))
         return questions
@@ -572,13 +628,10 @@ def _build_preview(item: dict, section_type: str) -> dict:
     if section_type == SectionType.SPATIAL_VISUALIZATION:
         preview.update(
             {
-                "context_kind": "shapes",
+                "context_kind": "letter_pairs",
                 "instruction": prompt.get("instruction", ""),
-                "shapes": {
-                    "shape_a": prompt.get("shape_a", {}),
-                    "shape_b": prompt.get("shape_b", {}),
-                },
-                "question_text": prompt.get("instruction", "Choose one answer."),
+                "letter_pairs": prompt.get("letter_pairs", []),
+                "question_text": "How many pairs show the same image?",
                 "options": options,
             }
         )
@@ -658,13 +711,10 @@ def _build_generated_preview(item: dict) -> dict:
     if section_type == SectionType.SPATIAL_VISUALIZATION:
         preview.update(
             {
-                "context_kind": "shapes",
+                "context_kind": "letter_pairs",
                 "instruction": prompt.get("instruction", ""),
-                "shapes": {
-                    "shape_a": prompt.get("shape_a", {}),
-                    "shape_b": prompt.get("shape_b", {}),
-                },
-                "question_text": prompt.get("instruction", "Choose one answer."),
+                "letter_pairs": prompt.get("letter_pairs", []),
+                "question_text": "How many pairs show the same image?",
             }
         )
         return preview

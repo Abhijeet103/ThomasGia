@@ -15,6 +15,7 @@
     <section class="card full-test-player" data-full-test-player data-attempt-id="{{ full_test_attempt_id }}" data-question-url="{{ full_test_question_url }}" data-submit-url="{{ full_test_submit_url }}" data-dashboard-url="{% url 'pages:dashboard' %}">
         <div class="test-player-topbar">
             <p class="muted test-timer" data-full-timer hidden></p>
+            <button type="button" class="button-secondary button-small" data-full-end-test hidden>End Test</button>
         </div>
 
         <div class="test-stage" data-full-stage="intro">

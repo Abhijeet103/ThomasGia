@@ -42,18 +42,29 @@ class FullTestSessionError(Exception):
     pass
 
 
+FREE_FULL_TEST_LIMIT = 1
+FREE_SECTION_TEST_LIMIT = 2
+FREE_PRACTICE_QUESTION_LIMIT = 10
+
 def can_start_attempt(user: User, mode: str) -> AccessDecision:
     if user.role == UserRole.PAID:
-        return AccessDecision(True, "Paid users can access full tests and section-wise tests.")
+        return AccessDecision(True, "")
 
     if mode == AttemptMode.FULL_TEST:
-        used_full_test_count = Attempt.objects.filter(user=user, mode=AttemptMode.FULL_TEST).count()
-        if used_full_test_count >= 3:
-            return AccessDecision(False, "Free users can take up to 3 full tests.")
-        remaining = 3 - used_full_test_count
-        return AccessDecision(True, f"Free tier includes 3 full tests. You have {remaining} remaining.")
+        used = Attempt.objects.filter(user=user, mode=AttemptMode.FULL_TEST).count()
+        if used >= FREE_FULL_TEST_LIMIT:
+            return AccessDecision(False, f"Free users can take up to {FREE_FULL_TEST_LIMIT} full test. Upgrade to unlock unlimited access.")
+        remaining = FREE_FULL_TEST_LIMIT - used
+        return AccessDecision(True, f"Free tier: {remaining} full test remaining.")
 
-    return AccessDecision(True, "Free users can access section-wise tests.")
+    if mode == AttemptMode.SECTION:
+        used = Attempt.objects.filter(user=user, mode=AttemptMode.SECTION).count()
+        if used >= FREE_SECTION_TEST_LIMIT:
+            return AccessDecision(False, f"Free users can take up to {FREE_SECTION_TEST_LIMIT} module tests. Upgrade to unlock unlimited access.")
+        remaining = FREE_SECTION_TEST_LIMIT - used
+        return AccessDecision(True, f"Free tier: {remaining} module test(s) remaining.")
+
+    return AccessDecision(True, "")
 
 
 def create_attempt(user: User, mode: str, difficulty: str = "easy", section_type: str | None = None) -> Attempt:
@@ -114,25 +125,11 @@ def create_attempt(user: User, mode: str, difficulty: str = "easy", section_type
 
 
 def get_or_create_full_test_attempt(user: User) -> Attempt:
-    expire_stale_attempts(user)
-    active_attempt = (
-        Attempt.objects.filter(user=user, mode=AttemptMode.FULL_TEST, status__in=[AttemptStatus.CREATED, AttemptStatus.IN_PROGRESS])
-        .order_by("-started_at")
-        .first()
-    )
-    if active_attempt and _full_test_session_exists(active_attempt.id):
-        logger.info("Reusing active full test attempt_id=%s user_id=%s from Redis session", active_attempt.id, user.id)
-        return active_attempt
-
-    if active_attempt:
-        attempt = active_attempt
-        logger.info("Rebuilding missing Redis session for existing full test attempt_id=%s user_id=%s", attempt.id, user.id)
-    else:
-        decision = can_start_attempt(user, AttemptMode.FULL_TEST)
-        if not decision.allowed:
-            raise PermissionError(decision.message)
-        attempt = Attempt.objects.create(user=user, mode=AttemptMode.FULL_TEST, status=AttemptStatus.IN_PROGRESS)
-        logger.info("Created new full test attempt_id=%s user_id=%s", attempt.id, user.id)
+    decision = can_start_attempt(user, AttemptMode.FULL_TEST)
+    if not decision.allowed:
+        raise PermissionError(decision.message)
+    attempt = Attempt.objects.create(user=user, mode=AttemptMode.FULL_TEST, status=AttemptStatus.IN_PROGRESS)
+    logger.info("Created new full test attempt_id=%s user_id=%s", attempt.id, user.id)
 
     conn = get_connection(DEFAULT_DB_PATH)
     try:
@@ -207,19 +204,6 @@ def get_or_create_full_test_attempt(user: User) -> Attempt:
 
 
 def get_or_create_section_attempt(user: User, section_type: str, difficulty: str = "medium") -> Attempt:
-    expire_stale_attempts(user)
-    active_attempt = (
-        Attempt.objects.filter(user=user, mode=AttemptMode.SECTION, status__in=[AttemptStatus.CREATED, AttemptStatus.IN_PROGRESS])
-        .prefetch_related("sections")
-        .order_by("-started_at")
-        .first()
-    )
-    if active_attempt:
-        first_section = next(iter(active_attempt.sections.all()), None)
-        if first_section and first_section.section_type == section_type:
-            logger.info("Reusing active section attempt_id=%s user_id=%s section=%s", active_attempt.id, user.id, section_type)
-            return active_attempt
-
     attempt = create_attempt(user, AttemptMode.SECTION, difficulty=difficulty, section_type=section_type)
     logger.info("Created new section attempt attempt_id=%s user_id=%s section=%s", attempt.id, user.id, section_type)
     return attempt
@@ -594,13 +578,10 @@ def _serialize_generated_question_for_player(question: dict[str, Any], include_c
     if section_type == SectionType.SPATIAL_VISUALIZATION:
         preview.update(
             {
-                "context_kind": "shapes",
+                "context_kind": "letter_pairs",
                 "instruction": prompt.get("instruction", ""),
-                "shapes": {
-                    "shape_a": prompt.get("shape_a", {}),
-                    "shape_b": prompt.get("shape_b", {}),
-                },
-                "question_text": prompt.get("instruction", "Choose one answer."),
+                "letter_pairs": prompt.get("letter_pairs", []),
+                "question_text": "How many pairs show the same image?",
             }
         )
         return preview
