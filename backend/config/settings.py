@@ -86,7 +86,7 @@ STATIC_URL = "/static/"
 STATICFILES_DIRS = [ROOT_DIR / "static"]
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "accounts.User"
-SITE_ID = 1
+SITE_ID = 2
 
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
@@ -105,8 +105,8 @@ LOGOUT_REDIRECT_URL = "/"
 
 SOCIALACCOUNT_LOGIN_ON_GET = True
 
-GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_AUTH_CLIENT_ID", "")
+GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_AUTH_CLIENT_SECRET", "")
 SITE_URL = os.getenv("SITE_URL", "http://127.0.0.1:8000")
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:8005/0")
 FULL_TEST_REDIS_TTL_SECONDS = int(os.getenv("FULL_TEST_REDIS_TTL_SECONDS", "7200"))
