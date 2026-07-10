@@ -204,6 +204,22 @@ def get_or_create_full_test_attempt(user: User) -> Attempt:
 
 
 def get_or_create_section_attempt(user: User, section_type: str, difficulty: str = "medium") -> Attempt:
+    expire_stale_attempts(user)
+    active_attempt = (
+        Attempt.objects.filter(
+            user=user,
+            mode=AttemptMode.SECTION,
+            status__in=[AttemptStatus.CREATED, AttemptStatus.IN_PROGRESS],
+            sections__section_type=section_type,
+        )
+        .prefetch_related("sections")
+        .order_by("-started_at")
+        .first()
+    )
+    if active_attempt is not None:
+        logger.info("Reusing active section attempt attempt_id=%s user_id=%s section=%s", active_attempt.id, user.id, section_type)
+        return active_attempt
+
     attempt = create_attempt(user, AttemptMode.SECTION, difficulty=difficulty, section_type=section_type)
     logger.info("Created new section attempt attempt_id=%s user_id=%s section=%s", attempt.id, user.id, section_type)
     return attempt

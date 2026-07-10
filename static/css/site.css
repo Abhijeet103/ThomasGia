@@ -761,10 +761,50 @@ a {
   font-size: clamp(2rem, 4.8vw, 3.2rem);
 }
 
+.section-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.section-detail-heading-group {
+  display: grid;
+  gap: 0;
+}
+
 .section-detail-copy {
   margin-top: -4px;
   max-width: 34ch;
   font-size: 1.08rem;
+}
+
+.section-help-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  justify-self: end;
+  margin-left: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgba(255, 250, 242, 0.96);
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.section-help-button:hover {
+  border-color: var(--brand);
+  color: var(--brand-dark);
+}
+
+.section-help-chevron {
+  display: inline-block;
+  transition: transform 0.15s ease;
 }
 
 .section-detail-overview {
@@ -772,23 +812,42 @@ a {
 }
 
 .section-info-card {
-  display: grid;
-  gap: 18px;
+  display: none;
+  gap: 0;
+  width: 100%;
+  max-width: none;
+  margin-top: 12px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: var(--muted);
 }
 
-.section-info-card h2 {
-  margin-bottom: 0;
-  font-size: 1.25rem;
+.section-info-card.open {
+  display: block;
 }
 
 .section-info-card p {
   margin: 0;
-  font-size: 1rem;
+}
+
+.section-info-card p + p {
+  margin-top: 16px;
+}
+
+.section-info-card strong {
+  color: var(--ink);
 }
 
 .section-mode-card {
   display: grid;
   gap: 16px;
+  background: #fffaf2;
+}
+
+.test-player.is-fullscreen-test-active .section-mode-card {
+  display: none;
 }
 
 .section-mode-switch {
@@ -1214,6 +1273,23 @@ a {
   align-items: center;
   min-height: auto;
   margin-bottom: 8px;
+}
+
+.section-end-test-button {
+  margin-left: auto;
+}
+
+.section-test-progress-wrap {
+  margin-bottom: 12px;
+}
+
+.section-progress-copy {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+
+.section-test-progress {
+  height: 8px;
 }
 
 .section-player-progress {

@@ -5,9 +5,34 @@ document.addEventListener("DOMContentLoaded", () => {
     body.classList.add(`role-context-${role}`);
   }
 
+  initSectionHelpToggle();
   initSectionPlayer();
   initFullTestPlayer();
 });
+
+function initSectionHelpToggle() {
+  const toggle = document.querySelector("[data-section-help-toggle]");
+  const panel = document.querySelector("[data-section-help-panel]");
+  const chevron = toggle?.querySelector(".section-help-chevron");
+
+  if (!toggle || !panel) {
+    return;
+  }
+
+  toggle.addEventListener("click", () => {
+    const isExpanded = toggle.getAttribute("aria-expanded") === "true";
+    toggle.setAttribute("aria-expanded", String(!isExpanded));
+    if (isExpanded) {
+      panel.setAttribute("hidden", "");
+      panel.classList.remove("open");
+      if (chevron) chevron.style.transform = "rotate(0deg)";
+    } else {
+      panel.removeAttribute("hidden");
+      panel.classList.add("open");
+      if (chevron) chevron.style.transform = "rotate(180deg)";
+    }
+  });
+}
 
 function initSectionPlayer() {
   const player = document.querySelector("[data-test-player]");
@@ -23,14 +48,19 @@ function initSectionPlayer() {
   let feedbackTimeout = null;
   const mode = player.dataset.mode || "practice";
   const sectionKey = player.dataset.sectionKey || "";
+  const practiceTotal = Number(player.dataset.practiceTotal || 0);
+  let practiceSolved = Number(player.dataset.practiceSolved || 0);
   const timeLimitSeconds = Number(player.dataset.timeLimitSeconds || 0);
   let remainingSeconds = timeLimitSeconds;
   let timerInterval = null;
   let finished = false;
+  let testStarted = false;
   const submittedAnswers = [];
 
   const seedEl = player.querySelector("[data-test-seed]");
   const progressEl = player.querySelector("[data-test-progress]");
+  const progressFillEl = player.querySelector("[data-test-progress-fill]");
+  const practiceProgressCopyEl = player.querySelector("[data-practice-progress-copy]");
   const timerEl = player.querySelector("[data-test-timer]");
   const feedbackEl = player.querySelector("[data-feedback-banner]");
   const completeSummaryEl = player.querySelector("[data-complete-summary]");
@@ -44,6 +74,22 @@ function initSectionPlayer() {
   const introStage = player.querySelector('[data-test-stage="intro"]');
   const fullscreenStartButton = player.querySelector("[data-test-fullscreen-start]");
   const endTestButton = player.querySelector("[data-test-end]");
+
+  const syncFullscreenTestUI = () => {
+    const isFullscreenTestActive =
+      mode === "test" &&
+      testStarted &&
+      document.fullscreenElement === player &&
+      !finished;
+    player.classList.toggle("is-fullscreen-test-active", isFullscreenTestActive);
+    if (endTestButton) {
+      if (isFullscreenTestActive) {
+        endTestButton.removeAttribute("hidden");
+      } else {
+        endTestButton.setAttribute("hidden", "");
+      }
+    }
+  };
 
   const showStage = (stage) => {
     [introStage, contextStage, questionStage, completeStage].forEach((node) => {
@@ -82,10 +128,24 @@ function initSectionPlayer() {
   };
 
   const updateProgress = () => {
-    if (!progressEl) return;
     const total = questions.length;
     const displayIndex = Math.min(currentIndex + 1, total || 1);
-    progressEl.textContent = `Question ${displayIndex} of ${total}`;
+    if (progressEl) {
+      progressEl.textContent = `Question ${displayIndex} of ${total}`;
+    }
+    if (progressFillEl) {
+      const progressPercent =
+        mode === "practice"
+          ? (practiceTotal ? Math.min(Math.round((practiceSolved / practiceTotal) * 100), 100) : 0)
+          : total
+            ? Math.max(1, Math.round((displayIndex / total) * 100))
+            : 0;
+      progressFillEl.style.width = `${progressPercent}%`;
+      progressFillEl.parentElement?.setAttribute("aria-valuenow", String(progressPercent));
+    }
+    if (practiceProgressCopyEl && mode === "practice") {
+      practiceProgressCopyEl.textContent = `${practiceSolved} of ${practiceTotal} practice questions solved`;
+    }
   };
 
   const syncPracticeProgress = async () => {
@@ -111,6 +171,7 @@ function initSectionPlayer() {
       return;
     }
     finished = true;
+    syncFullscreenTestUI();
     if (timerInterval) {
       window.clearInterval(timerInterval);
     }
@@ -195,7 +256,9 @@ function initSectionPlayer() {
           if (mode === "practice") {
             if (isCorrect) {
               button.classList.add("is-selected-correct");
+              practiceSolved += 1;
               syncPracticeProgress();
+              updateProgress();
               showFeedback("Correct.", "correct");
               if (feedbackTimeout) {
                 window.clearTimeout(feedbackTimeout);
@@ -240,13 +303,16 @@ function initSectionPlayer() {
     endTestButton?.addEventListener("click", () => {
       finishPlayer();
     });
+    document.addEventListener("fullscreenchange", syncFullscreenTestUI);
     fullscreenStartButton?.addEventListener("click", async () => {
       const enteredFullscreen = await requestFullscreenFor(player);
       if (!enteredFullscreen) {
         showFeedback("Fullscreen is required to start test mode.", "wrong");
         return;
       }
+      testStarted = true;
       hideFeedback();
+      syncFullscreenTestUI();
       updateProgress();
       updateTimer();
       timerInterval = window.setInterval(() => {
@@ -258,6 +324,7 @@ function initSectionPlayer() {
       }, 1000);
       renderQuestion();
     });
+    syncFullscreenTestUI();
     showStage(introStage);
     return;
   }

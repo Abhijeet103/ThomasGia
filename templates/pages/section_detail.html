@@ -3,17 +3,30 @@
 {% block content %}
 <section class="content-section section-detail-shell">
     <a href="{% url 'pages:practice' %}" class="back-link section-detail-back">← Back to practice</a>
-    <h1 class="section-title section-detail-title">{{ section.title|lower|capfirst }}</h1>
-    <p class="section-copy section-detail-copy">{{ section.description }}</p>
+    <div class="section-detail-header">
+        <div class="section-detail-heading-group">
+            <h1 class="section-title section-detail-title">{{ section.title|lower|capfirst }}</h1>
+            <p class="section-copy section-detail-copy">{{ section.description }}</p>
+        </div>
 
-    <div class="section-overview-grid section-detail-overview">
-        <article class="card section-info-card">
-            <h2>How this section works</h2>
-            <p>{{ section.instruction }}</p>
+        <button
+            type="button"
+            class="section-help-button"
+            data-section-help-toggle
+            aria-expanded="false"
+            aria-controls="section-help-panel"
+        >
+            How this works <span class="section-help-chevron" aria-hidden="true">&#9662;</span>
+        </button>
+    </div>
+
+    <div class="section-detail-overview">
+        <article class="card section-info-card" id="section-help-panel" data-section-help-panel hidden>
+            <p><strong>{{ section.instruction }}</strong></p>
             {% if section.mode == "test" %}
                 <p class="muted">Timed section: {{ section.time_limit_seconds }} seconds total. There is no per-question timer.</p>
             {% else %}
-                <p class="muted">Practice mode gives immediate right or wrong feedback.</p>
+                <p class="muted">Practice mode gives immediate right-or-wrong feedback, with no time limit.</p>
             {% endif %}
         </article>
     </div>
@@ -32,6 +45,8 @@
             data-total-questions="{{ section.previews|length }}"
             data-mode="{{ section.mode }}"
             data-time-limit-seconds="{{ section.time_limit_seconds }}"
+            data-practice-solved="{{ section.practice_questions_solved }}"
+            data-practice-total="{{ section.practice_question_total }}"
             data-dashboard-url="{% url 'pages:dashboard' %}"
             data-submit-url="{{ section.submit_url }}"
             data-attempt-id="{{ section.attempt_id|default:'' }}"
@@ -50,12 +65,27 @@
             </article>
 
             <div class="test-player-topbar section-player-topbar">
-                <p class="section-player-progress" data-test-progress>Question 1 of {{ section.question_count }}</p>
-                <p class="muted test-timer" data-test-timer>{% if section.mode == "practice" %}no timer in practice mode{% endif %}</p>
-                {% if section.mode == "test" %}
-                    <button type="button" class="button-secondary button-small" data-test-end>End Test</button>
+                {% if section.mode != "practice" %}
+                    <p class="muted test-timer" data-test-timer></p>
+                    <button type="button" class="button-secondary button-small section-end-test-button" data-test-end hidden>End test</button>
                 {% endif %}
             </div>
+
+            {% if section.mode == "practice" %}
+                <div class="section-test-progress-wrap">
+                    <p class="muted section-progress-copy" data-practice-progress-copy>{{ section.practice_questions_solved }} of {{ section.practice_question_total }} practice questions solved</p>
+                    <div
+                        class="practice-progress section-test-progress"
+                        role="progressbar"
+                        aria-label="Practice progress"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow="{{ section.practice_progress_percent }}"
+                    >
+                        <span class="practice-progress-fill section-test-progress-fill" data-test-progress-fill style="width: {{ section.practice_progress_percent }}%;"></span>
+                    </div>
+                </div>
+            {% endif %}
 
             {% if section.mode == "test" %}
                 <div class="test-stage" data-test-stage="intro">

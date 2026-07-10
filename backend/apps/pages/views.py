@@ -237,6 +237,13 @@ class SectionDetailPageView(TemplateView):
         section_attempt_id = None
         section_submit_url = ""
         section_access_error = ""
+        practice_question_total = max(1, SECTION_TIME_LIMITS[section_type] // 2)
+        practice_questions_solved = 0
+        if self.request.user.is_authenticated:
+            progress = SectionProgress.objects.filter(user=self.request.user, section_type=section_type).first()
+            if progress is not None:
+                practice_questions_solved = progress.practice_questions_solved
+        practice_progress_percent = min(round((practice_questions_solved / practice_question_total) * 100), 100) if practice_question_total else 0
         if mode == "test" and self.request.user.is_authenticated:
             try:
                 attempt = get_or_create_section_attempt(self.request.user, section_type)
@@ -260,6 +267,9 @@ class SectionDetailPageView(TemplateView):
                     "instruction": SECTION_INSTRUCTIONS[section_type],
                     "time_limit_seconds": SECTION_TIME_LIMITS[section_type],
                     "question_count": len(previews),
+                    "practice_question_total": practice_question_total,
+                    "practice_questions_solved": practice_questions_solved,
+                    "practice_progress_percent": practice_progress_percent,
                     "previews": previews,
                     "mode": mode,
                     "attempt_id": section_attempt_id,
@@ -498,7 +508,7 @@ def _practice_section_cards(request):
                 "status_class": status_class,
                 "action_label": action_label,
                 "action_class": "practice-button-secondary" if status_class == "status-in-progress" else "practice-button-primary",
-                "action_url": f"{reverse('pages:section-detail', args=[key])}?mode={'test' if active_attempt else 'practice'}",
+                "action_url": f"{reverse('pages:section-detail', args=[key])}?mode=practice",
                 "theme_class": f"section-theme-{index % 3}",
             }
         )
@@ -506,12 +516,9 @@ def _practice_section_cards(request):
 
 
 def _build_section_questions(section_type: str, mode: str, user=None) -> list[dict]:
-    from backend.apps.assessments.services import FREE_PRACTICE_QUESTION_LIMIT
-    from backend.apps.accounts.models import UserRole
     difficulty = "easy" if mode == "practice" else "medium"
     if mode == "practice":
-        is_free = user is None or not user.is_authenticated or getattr(user, "role", UserRole.FREE) == UserRole.FREE
-        question_count = FREE_PRACTICE_QUESTION_LIMIT if is_free else SECTION_PRACTICE_PAID_COUNT
+        question_count = max(1, SECTION_TIME_LIMITS[section_type] // 2)
     else:
         question_count = SECTION_TIME_LIMITS[section_type]
     session_id = uuid.uuid4().hex
