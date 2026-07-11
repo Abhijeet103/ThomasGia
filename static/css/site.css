@@ -1054,20 +1054,6 @@ a {
   z-index: 1;
 }
 
-.practice-card-copy {
-  margin: 0;
-  max-width: 24ch;
-  min-height: 3.1em;
-  font-size: 0.88rem;
-  line-height: 1.55;
-  position: relative;
-  z-index: 1;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
 .practice-card-meta,
 .practice-card-stats {
   justify-content: flex-start;

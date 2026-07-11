@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 from dotenv import load_dotenv
 
-from prepgia.schema import init_db
+from prepgia.schema import DEFAULT_DB_PATH, init_db
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(ROOT_DIR / ".env")
 DATA_DIR = ROOT_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-init_db(DATA_DIR / "prepgia.sqlite3")
+QUESTION_BANK_DB_PATH = Path(os.getenv("QUESTION_BANK_DB_PATH", str(DEFAULT_DB_PATH)))
+init_db(QUESTION_BANK_DB_PATH)
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key")
 DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() == "true"
@@ -68,12 +70,42 @@ TEMPLATES = [
 WSGI_APPLICATION = "backend.config.wsgi.application"
 ASGI_APPLICATION = "backend.config.asgi.application"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": str(DATA_DIR / "prepgia.sqlite3"),
-    }
-}
+def _database_config_from_env():
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    if not database_url:
+        return {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": str(DATA_DIR / "django.sqlite3"),
+        }
+
+    parsed = urlparse(database_url)
+    scheme = parsed.scheme.lower()
+
+    if scheme in {"postgres", "postgresql", "pgsql"}:
+        return {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": parsed.path.lstrip("/"),
+            "USER": unquote(parsed.username or ""),
+            "PASSWORD": unquote(parsed.password or ""),
+            "HOST": parsed.hostname or "",
+            "PORT": str(parsed.port or "5432"),
+            "CONN_MAX_AGE": int(os.getenv("DATABASE_CONN_MAX_AGE", "60")),
+            "OPTIONS": {"sslmode": os.getenv("DATABASE_SSLMODE", "require")},
+        }
+
+    if scheme == "sqlite":
+        sqlite_path = unquote(parsed.path or "").lstrip("/")
+        if parsed.netloc:
+            sqlite_path = f"/{parsed.netloc}{parsed.path}"
+        return {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": sqlite_path or str(DATA_DIR / "django.sqlite3"),
+        }
+
+    raise ValueError(f"Unsupported DATABASE_URL scheme: {scheme}")
+
+
+DATABASES = {"default": _database_config_from_env()}
 
 AUTH_PASSWORD_VALIDATORS = []
 

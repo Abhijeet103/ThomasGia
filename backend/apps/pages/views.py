@@ -27,7 +27,6 @@ from backend.apps.assessments.services import (
 )
 from prepgia.generators import generate_question
 from prepgia.preview_data import get_questions
-from prepgia.schema import DEFAULT_DB_PATH, get_connection
 
 
 SECTION_META = {
@@ -522,16 +521,12 @@ def _build_section_questions(section_type: str, mode: str, user=None) -> list[di
     else:
         question_count = SECTION_TIME_LIMITS[section_type]
     session_id = uuid.uuid4().hex
-    conn = get_connection(DEFAULT_DB_PATH)
-    try:
-        questions = []
-        for index in range(question_count):
-            seed = f"section:{section_type}:{mode}:{difficulty}:{session_id}:{index}"
-            generated = generate_question(section_type, difficulty, seed, conn=conn)
-            questions.append(_build_generated_preview(asdict(generated)))
-        return questions
-    finally:
-        conn.close()
+    questions = []
+    for index in range(question_count):
+        seed = f"section:{section_type}:{mode}:{difficulty}:{session_id}:{index}"
+        generated = generate_question(section_type, difficulty, seed)
+        questions.append(_build_generated_preview(asdict(generated)))
+    return questions
 
 
 def _question_summary(payload_json: str) -> str:

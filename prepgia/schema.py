@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
 
-DEFAULT_DB_PATH = Path("data/prepgia.sqlite3")
+DEFAULT_DB_PATH = Path(os.getenv("QUESTION_BANK_DB_PATH", "data/prepgia.sqlite3"))
 
 
 SCHEMA_SQL = """

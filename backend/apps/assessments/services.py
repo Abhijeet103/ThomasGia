@@ -13,7 +13,6 @@ from redis.exceptions import RedisError
 
 from backend.apps.accounts.models import User, UserRole
 from prepgia.generators import SECTION_TYPES, generate_question
-from prepgia.schema import DEFAULT_DB_PATH, get_connection
 
 from .models import Attempt, AttemptAnswer, AttemptMode, AttemptSection, AttemptStatus, SectionProgress, SectionType
 
@@ -83,42 +82,37 @@ def create_attempt(user: User, mode: str, difficulty: str = "easy", section_type
         section_type or "all",
         len(section_keys),
     )
-    conn = get_connection(DEFAULT_DB_PATH)
+    for index, section_key in enumerate(section_keys):
+        question_target = SECTION_TIME_LIMITS[section_key] if mode == AttemptMode.SECTION else 5
+        logger.info(
+            "Generating section attempt payload attempt_id=%s section=%s difficulty=%s question_count=%s",
+            attempt.id,
+            section_key,
+            difficulty,
+            question_target,
+        )
+        payloads: list[dict[str, Any]] = []
+        for question_index in range(question_target):
+            seed = f"{attempt.id}:{section_key}:{difficulty}:{question_index}"
+            generated = generate_question(section_key, difficulty, seed)
+            payloads.append(asdict(generated))
 
-    try:
-        for index, section_key in enumerate(section_keys):
-            question_target = SECTION_TIME_LIMITS[section_key] if mode == AttemptMode.SECTION else 5
-            logger.info(
-                "Generating section attempt payload attempt_id=%s section=%s difficulty=%s question_count=%s",
-                attempt.id,
-                section_key,
-                difficulty,
-                question_target,
-            )
-            payloads: list[dict[str, Any]] = []
-            for question_index in range(question_target):
-                seed = f"{attempt.id}:{section_key}:{difficulty}:{question_index}"
-                generated = generate_question(section_key, difficulty, seed, conn=conn)
-                payloads.append(asdict(generated))
-
-            AttemptSection.objects.create(
-                attempt=attempt,
-                section_type=section_key,
-                order_index=index,
-                difficulty=difficulty,
-                time_limit_seconds=SECTION_TIME_LIMITS[section_key],
-                question_count=len(payloads),
-                question_payload=payloads,
-            )
-            logger.info(
-                "Saved section attempt payload to DB attempt_id=%s section=%s order_index=%s question_count=%s",
-                attempt.id,
-                section_key,
-                index,
-                len(payloads),
-            )
-    finally:
-        conn.close()
+        AttemptSection.objects.create(
+            attempt=attempt,
+            section_type=section_key,
+            order_index=index,
+            difficulty=difficulty,
+            time_limit_seconds=SECTION_TIME_LIMITS[section_key],
+            question_count=len(payloads),
+            question_payload=payloads,
+        )
+        logger.info(
+            "Saved section attempt payload to DB attempt_id=%s section=%s order_index=%s question_count=%s",
+            attempt.id,
+            section_key,
+            index,
+            len(payloads),
+        )
 
     logger.info("Attempt created successfully attempt_id=%s user_id=%s mode=%s", attempt.id, user.id, mode)
     return attempt
@@ -131,58 +125,54 @@ def get_or_create_full_test_attempt(user: User) -> Attempt:
     attempt = Attempt.objects.create(user=user, mode=AttemptMode.FULL_TEST, status=AttemptStatus.IN_PROGRESS)
     logger.info("Created new full test attempt_id=%s user_id=%s", attempt.id, user.id)
 
-    conn = get_connection(DEFAULT_DB_PATH)
-    try:
-        session_sections = []
-        existing_sections = {section.section_type: section for section in attempt.sections.all()}
-        for index, section_key in enumerate(SECTION_TYPES):
+    session_sections = []
+    existing_sections = {section.section_type: section for section in attempt.sections.all()}
+    for index, section_key in enumerate(SECTION_TYPES):
+        logger.info(
+            "Generating full test section attempt_id=%s section=%s practice_count=%s test_count=%s",
+            attempt.id,
+            section_key,
+            FULL_TEST_PRACTICE_COUNT,
+            SECTION_TIME_LIMITS[section_key],
+        )
+        practice_questions = _build_question_batch(attempt.id, section_key, "practice", FULL_TEST_PRACTICE_COUNT, "easy")
+        test_count = SECTION_TIME_LIMITS[section_key]
+        test_questions = _build_question_batch(attempt.id, section_key, "test", test_count, "medium")
+
+        section = existing_sections.get(section_key)
+        if section is None:
+            section = AttemptSection.objects.create(
+                attempt=attempt,
+                section_type=section_key,
+                order_index=index,
+                difficulty="mixed",
+                time_limit_seconds=SECTION_TIME_LIMITS[section_key],
+                question_count=len(test_questions),
+                question_payload={},
+            )
+        else:
+            section.order_index = index
+            section.difficulty = "mixed"
+            section.time_limit_seconds = SECTION_TIME_LIMITS[section_key]
+            section.question_count = len(test_questions)
+            section.question_payload = {}
+            section.save(update_fields=["order_index", "difficulty", "time_limit_seconds", "question_count", "question_payload"])
             logger.info(
-                "Generating full test section attempt_id=%s section=%s practice_count=%s test_count=%s",
+                "Updated full test section metadata in DB attempt_id=%s section_id=%s section=%s test_count=%s",
                 attempt.id,
+                section.id,
                 section_key,
-                FULL_TEST_PRACTICE_COUNT,
-                SECTION_TIME_LIMITS[section_key],
+                len(test_questions),
             )
-            practice_questions = _build_question_batch(conn, attempt.id, section_key, "practice", FULL_TEST_PRACTICE_COUNT, "easy")
-            test_count = SECTION_TIME_LIMITS[section_key]
-            test_questions = _build_question_batch(conn, attempt.id, section_key, "test", test_count, "medium")
 
-            section = existing_sections.get(section_key)
-            if section is None:
-                section = AttemptSection.objects.create(
-                    attempt=attempt,
-                    section_type=section_key,
-                    order_index=index,
-                    difficulty="mixed",
-                    time_limit_seconds=SECTION_TIME_LIMITS[section_key],
-                    question_count=len(test_questions),
-                    question_payload={},
-                )
-            else:
-                section.order_index = index
-                section.difficulty = "mixed"
-                section.time_limit_seconds = SECTION_TIME_LIMITS[section_key]
-                section.question_count = len(test_questions)
-                section.question_payload = {}
-                section.save(update_fields=["order_index", "difficulty", "time_limit_seconds", "question_count", "question_payload"])
-                logger.info(
-                    "Updated full test section metadata in DB attempt_id=%s section_id=%s section=%s test_count=%s",
-                    attempt.id,
-                    section.id,
-                    section_key,
-                    len(test_questions),
-                )
-
-            session_sections.append(
-                {
-                    "section_id": section.id,
-                    "section_type": section_key,
-                    "practice_questions": practice_questions,
-                    "test_questions": test_questions,
-                }
-            )
-    finally:
-        conn.close()
+        session_sections.append(
+            {
+                "section_id": section.id,
+                "section_type": section_key,
+                "practice_questions": practice_questions,
+                "test_questions": test_questions,
+            }
+        )
 
     _save_full_test_session(
         attempt.id,
@@ -498,11 +488,11 @@ def complete_attempt_with_zero(attempt: Attempt, reason: str = "manual_end") -> 
     return attempt
 
 
-def _build_question_batch(conn, attempt_id: int, section_type: str, phase: str, count: int, difficulty: str) -> list[dict[str, Any]]:
+def _build_question_batch(attempt_id: int, section_type: str, phase: str, count: int, difficulty: str) -> list[dict[str, Any]]:
     batch = []
     for index in range(count):
         seed = f"{attempt_id}:{section_type}:{phase}:{difficulty}:{index}"
-        generated = generate_question(section_type, difficulty, seed, conn=conn)
+        generated = generate_question(section_type, difficulty, seed)
         batch.append(asdict(generated))
     logger.info(
         "Generated question batch attempt_id=%s section=%s phase=%s difficulty=%s count=%s",

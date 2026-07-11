@@ -63,3 +63,20 @@ class SectionProgress(models.Model):
 
     class Meta:
         unique_together = ("user", "section_type")
+
+
+class WordMeaningItem(models.Model):
+    pair_word_1 = models.CharField(max_length=128)
+    pair_word_2 = models.CharField(max_length=128)
+    relationship_type = models.CharField(max_length=64)
+    odd_word = models.CharField(max_length=128)
+    difficulty = models.CharField(max_length=16, default="easy")
+    tags = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["difficulty", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.pair_word_1} / {self.pair_word_2} -> {self.odd_word}"
