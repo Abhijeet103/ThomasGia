@@ -16,6 +16,9 @@ SECTION_TYPES = [
     "number_speed_accuracy",
     "word_meaning",
     "spatial_visualization",
+    "ccat_numerical",
+    "ccat_verbal",
+    "ccat_spatial",
 ]
 
 TRAITS = [
@@ -149,6 +152,46 @@ WORD_MEANING_INSTRUCTIONS = [
     "Choose the odd one out.",
     "Which word does not belong with the other two?",
     "Pick the word that does not fit the group.",
+]
+CCAT_SENTENCE_TEMPLATES = [
+    "Despite the {descriptor} weather, the outdoor event proceeded as planned.",
+    "The manager praised her {descriptor} approach to solving the deadline issue.",
+    "His answer sounded {descriptor}, so the team asked for stronger evidence.",
+]
+CCAT_SENTENCE_OPTIONS = {
+    "inclement": ["favorable", "inclement", "predictable", "mild"],
+    "methodical": ["careless", "methodical", "random", "casual"],
+    "vague": ["precise", "vague", "confident", "detailed"],
+}
+CCAT_ANALOGIES = [
+    ("Doctor", "Patient", "Teacher", ["Classroom", "Student", "Lesson", "School"], "Student"),
+    ("Chef", "Kitchen", "Pilot", ["Runway", "Cockpit", "Ticket", "Airport"], "Cockpit"),
+    ("Painter", "Brush", "Writer", ["Notebook", "Pen", "Library", "Idea"], "Pen"),
+]
+CCAT_ODD_ONE_OUT = [
+    (["Sprint", "Jog", "Walk", "Whisper"], "Whisper"),
+    (["Maple", "Oak", "Pine", "Copper"], "Copper"),
+    (["Tablet", "Capsule", "Syrup", "Lantern"], "Lantern"),
+]
+CCAT_SPATIAL_RULES = [
+    {
+        "question": "Which option continues the sequence where the shape rotates 90° clockwise each step?",
+        "options": ["▲", "▶", "▼", "◀"],
+        "answer": "◀",
+        "instruction": "Track the direction change from one shape to the next.",
+    },
+    {
+        "question": "Which option is the mirrored version of the reference pattern?",
+        "options": ["◧", "◨", "◩", "◪"],
+        "answer": "◨",
+        "instruction": "Compare the filled side of each figure to the reference rule.",
+    },
+    {
+        "question": "Which option completes the abstract pattern by adding one new side each step?",
+        "options": ["△", "□", "⬟", "⬢"],
+        "answer": "⬢",
+        "instruction": "Count the edges and follow the growth pattern.",
+    },
 ]
 
 
@@ -353,6 +396,135 @@ class SpatialVisualizationGenerator(BaseQuestionGenerator):
         )
 
 
+class CCATNumericalGenerator(BaseQuestionGenerator):
+    section_type = "ccat_numerical"
+
+    def generate(self, difficulty: str, seed: str, conn=None) -> GeneratedQuestion:
+        rng = self.rng(seed)
+        subtype = rng.choice(["series", "discount", "ratio"])
+
+        if subtype == "series":
+            start = rng.randint(2, 6)
+            gap = rng.randint(2, 5)
+            series = [start]
+            increment = gap
+            for _ in range(4):
+                series.append(series[-1] + increment)
+                increment += 2
+            answer = series[-1] + increment
+            options = [answer, answer + 2, answer - 2, answer + 4]
+            rng.shuffle(options)
+            prompt = {
+                "instruction": "What comes next in the number series?",
+                "question": f"{', '.join(str(value) for value in series)}, ___",
+            }
+        elif subtype == "discount":
+            base = rng.choice([40, 50, 60, 75, 80])
+            markup = rng.choice([20, 25, 40])
+            discount = rng.choice([10, 20, 25])
+            marked = base * (1 + markup / 100)
+            answer = round(marked * (1 - discount / 100), 2)
+            options = [answer, round(base * (1 - discount / 100), 2), round(base * (1 + (markup - discount) / 100), 2), round(marked, 2)]
+            prompt = {
+                "instruction": "Calculate the final price.",
+                "question": f"A product costing ${base} is marked up by {markup}% and then discounted by {discount}%. What is the final price?",
+            }
+        else:
+            workers = rng.randint(3, 6)
+            days = rng.randint(4, 8)
+            target_workers = workers - 1
+            answer = round((workers * days) / target_workers, 2)
+            options = [answer, round(days - 1, 2), round(days + 1, 2), round((target_workers * days) / workers, 2)]
+            prompt = {
+                "instruction": "Use work-rate reasoning.",
+                "question": f"If {workers} workers can finish a job in {days} days, how many days will {target_workers} workers need?",
+            }
+
+        option_strings = [str(option).rstrip("0").rstrip(".") if isinstance(option, float) else str(option) for option in options]
+        answer_string = str(answer).rstrip("0").rstrip(".") if isinstance(answer, float) else str(answer)
+        return GeneratedQuestion(
+            self.section_type,
+            difficulty,
+            seed,
+            {
+                "question_id": str(uuid.uuid4()),
+                "section_type": self.section_type,
+                "prompt": prompt,
+                "options": option_strings,
+                "metadata": {"difficulty": difficulty, "subtype": subtype},
+            },
+            {"answer": answer_string},
+        )
+
+
+class CCATVerbalGenerator(BaseQuestionGenerator):
+    section_type = "ccat_verbal"
+
+    def generate(self, difficulty: str, seed: str, conn=None) -> GeneratedQuestion:
+        rng = self.rng(seed)
+        subtype = rng.choice(["analogy", "sentence", "odd_one_out"])
+
+        if subtype == "analogy":
+            left, right, target, options, answer = rng.choice(CCAT_ANALOGIES)
+            prompt = {
+                "instruction": "Choose the option that completes the analogy.",
+                "question": f"{left} is to {right} as {target} is to ___?",
+            }
+        elif subtype == "sentence":
+            descriptor = rng.choice(list(CCAT_SENTENCE_OPTIONS.keys()))
+            options = CCAT_SENTENCE_OPTIONS[descriptor][:]
+            template = rng.choice(CCAT_SENTENCE_TEMPLATES)
+            answer = descriptor
+            prompt = {
+                "instruction": "Choose the word that best completes the sentence.",
+                "question": template.format(descriptor="_____"),
+            }
+        else:
+            options, answer = rng.choice(CCAT_ODD_ONE_OUT)
+            prompt = {
+                "instruction": "Choose the word that does not belong.",
+                "question": "Which word does not belong with the others?",
+            }
+
+        return GeneratedQuestion(
+            self.section_type,
+            difficulty,
+            seed,
+            {
+                "question_id": str(uuid.uuid4()),
+                "section_type": self.section_type,
+                "prompt": prompt,
+                "options": options,
+                "metadata": {"difficulty": difficulty, "subtype": subtype},
+            },
+            {"answer": answer},
+        )
+
+
+class CCATSpatialGenerator(BaseQuestionGenerator):
+    section_type = "ccat_spatial"
+
+    def generate(self, difficulty: str, seed: str, conn=None) -> GeneratedQuestion:
+        rng = self.rng(seed)
+        rule = rng.choice(CCAT_SPATIAL_RULES)
+        return GeneratedQuestion(
+            self.section_type,
+            difficulty,
+            seed,
+            {
+                "question_id": str(uuid.uuid4()),
+                "section_type": self.section_type,
+                "prompt": {
+                    "instruction": rule["instruction"],
+                    "question": rule["question"],
+                },
+                "options": rule["options"],
+                "metadata": {"difficulty": difficulty, "subtype": "abstract_pattern"},
+            },
+            {"answer": rule["answer"]},
+        )
+
+
 def _make_polygon_points(rng: random.Random, vertex_count: int) -> list[list[float]]:
     points = []
     for index in range(vertex_count):
@@ -370,6 +542,9 @@ GENERATOR_MAP = {
     "number_speed_accuracy": NumberSpeedAccuracyGenerator(),
     "word_meaning": WordMeaningGenerator(),
     "spatial_visualization": SpatialVisualizationGenerator(),
+    "ccat_numerical": CCATNumericalGenerator(),
+    "ccat_verbal": CCATVerbalGenerator(),
+    "ccat_spatial": CCATSpatialGenerator(),
 }
 
 

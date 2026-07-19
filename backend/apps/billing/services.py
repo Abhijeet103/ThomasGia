@@ -46,6 +46,16 @@ def _plan_rank(plan_code: str) -> int:
         raise BillingConfigurationError(f"Unknown plan rank for code: {plan_code}") from exc
 
 
+def _safe_plan_rank(plan_code: str | None) -> int | None:
+    if not plan_code:
+        return None
+    try:
+        return _plan_rank(plan_code)
+    except BillingConfigurationError:
+        logger.warning("Ignoring unknown subscription plan code while building billing UI: %s", plan_code)
+        return None
+
+
 def _price_id_for(plan_code: str) -> str:
     return {
         "weekly": settings.STRIPE_PRICE_WEEKLY,
@@ -134,7 +144,7 @@ def _build_absolute_url(path: str) -> str:
 def build_plan_cards(user: User | None, active_subscription: Subscription | None) -> list[dict[str, object]]:
     current_plan_code = active_subscription.plan_code if active_subscription else None
     has_active_subscription = bool(active_subscription and active_subscription.status == SubscriptionStatus.ACTIVE)
-    current_plan_rank = _plan_rank(current_plan_code) if current_plan_code else None
+    current_plan_rank = _safe_plan_rank(current_plan_code)
     cards: list[dict[str, object]] = []
     for plan in get_plan_catalog():
         is_current = plan.code == current_plan_code

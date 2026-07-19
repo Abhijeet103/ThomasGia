@@ -4,20 +4,20 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ page_title|default:"PrepGIA" }}</title>
-    <meta name="description" content="{{ meta_description|default:'Thomas GIA practice platform.' }}">
+    <title>{{ page_title|default:"MindMetric" }}</title>
+    <meta name="description" content="{{ meta_description|default:'Cognitive and psychometric test practice platform.' }}">
     <link rel="canonical" href="{{ request.build_absolute_uri }}">
-    <meta property="og:title" content="{{ page_title|default:'PrepGIA' }}">
-    <meta property="og:description" content="{{ meta_description|default:'Thomas GIA practice platform.' }}">
+    <meta property="og:title" content="{{ page_title|default:'MindMetric' }}">
+    <meta property="og:description" content="{{ meta_description|default:'Cognitive and psychometric test practice platform.' }}">
     <meta property="og:type" content="website">
     <link rel="stylesheet" href="{% static 'css/site.css' %}">
 </head>
 <body data-role="{% if request.user.is_authenticated %}{{ request.user.role }}{% else %}guest{% endif %}" data-view-name="{{ request.resolver_match.view_name|default:'' }}">
     <div class="page-shell">
         <header class="topbar">
-            <a href="{% url 'pages:home' %}" class="brand">PrepGIA</a>
+            <a href="{% url 'pages:home' %}" class="brand">MindMetric</a>
             <nav class="nav" aria-label="User navigation">
-                <a href="{% url 'pages:practice' %}" class="{% if request.resolver_match.view_name == 'pages:practice' or request.resolver_match.view_name == 'pages:section-detail' or request.resolver_match.view_name == 'pages:full-test' %}is-active{% endif %}">Practice</a>
+                <a href="{% url 'pages:practice' %}" class="{% if request.resolver_match.view_name == 'pages:practice' or request.resolver_match.view_name == 'pages:assessment-practice' or request.resolver_match.view_name == 'pages:section-detail' or request.resolver_match.view_name == 'pages:assessment-section-detail' or request.resolver_match.view_name == 'pages:full-test' or request.resolver_match.view_name == 'pages:assessment-full-test' %}is-active{% endif %}">Practice</a>
                 {% if request.user.is_authenticated %}
                     <a href="{% url 'pages:dashboard' %}" class="{% if request.resolver_match.view_name == 'pages:dashboard' %}is-active{% endif %}">Dashboard</a>
                 {% endif %}
@@ -78,7 +78,7 @@
         </main>
 
         <footer class="footer">
-            PrepGIA helps candidates practice Thomas GIA-style questions with timed sections, section-wise drills, and upgradeable access.
+            MindMetric helps candidates practice Thomas GIA-style and CCAT-style questions with timed sections, module-wise drills, and upgradeable access.
         </footer>
     </div>
     <script src="{% static 'js/site.js' %}"></script>

@@ -2,7 +2,7 @@
 
 {% block content %}
 <section class="content-section section-detail-shell">
-    <a href="{% url 'pages:practice' %}" class="back-link section-detail-back">← Back to practice</a>
+    <a href="{% url 'pages:assessment-practice' assessment_slug %}" class="back-link section-detail-back">← Back to practice</a>
     <div class="section-detail-header">
         <div class="section-detail-heading-group">
             <h1 class="section-title section-detail-title">{{ section.title|lower|capfirst }}</h1>
@@ -41,6 +41,7 @@
         <section
             class="card test-player section-player-card"
             data-test-player
+            data-assessment-type="{{ assessment_slug }}"
             data-section-key="{{ section.key }}"
             data-total-questions="{{ section.previews|length }}"
             data-mode="{{ section.mode }}"
@@ -54,8 +55,8 @@
         >
             <article class="card section-mode-card">
                 <div class="section-mode-switch" role="tablist" aria-label="Mode switch">
-                    <a href="{% url 'pages:section-detail' section.key %}?mode=practice" class="{% if section.mode == 'practice' %}button{% else %}button-secondary{% endif %} section-mode-pill">Practice mode</a>
-                    <a href="{% url 'pages:section-detail' section.key %}?mode=test" class="{% if section.mode == 'test' %}button{% else %}button-secondary{% endif %} section-mode-pill">Test mode</a>
+                    <a href="{% url 'pages:assessment-section-detail' assessment_slug section.key %}?mode=practice" class="{% if section.mode == 'practice' %}button{% else %}button-secondary{% endif %} section-mode-pill">Practice mode</a>
+                    <a href="{% url 'pages:assessment-section-detail' assessment_slug section.key %}?mode=test" class="{% if section.mode == 'test' %}button{% else %}button-secondary{% endif %} section-mode-pill">Test mode</a>
                 </div>
                 {% if section.mode == "test" %}
                     <p class="muted section-mode-copy">Timed section · fullscreen required · one player, card updates in place as you go.</p>
@@ -65,8 +66,8 @@
             </article>
 
             <div class="test-player-topbar section-player-topbar">
+                <p class="muted test-timer" data-test-timer></p>
                 {% if section.mode != "practice" %}
-                    <p class="muted test-timer" data-test-timer></p>
                     <button type="button" class="button-secondary button-small section-end-test-button" data-test-end hidden>End test</button>
                 {% endif %}
             </div>
@@ -94,9 +95,16 @@
                     <p class="muted">This timed section starts only after fullscreen mode is enabled.</p>
                     <button type="button" class="button" data-test-fullscreen-start>Enter fullscreen and start</button>
                 </div>
+            {% else %}
+                <div class="test-stage" data-test-stage="intro">
+                    <p class="muted test-label">Practice mode</p>
+                    <h3>Start practice</h3>
+                    <p class="muted">Begin when ready. We will track your average time per solved question so you can compare your pace with the timed test.</p>
+                    <button type="button" class="button" data-test-practice-start>Start practice</button>
+                </div>
             {% endif %}
 
-            <div class="test-stage" data-test-stage="context" {% if section.mode == "test" %}hidden{% endif %}>
+            <div class="test-stage" data-test-stage="context" hidden>
                 <div class="test-context test-context-large test-shell section-question-shell section-stage-box" data-test-context></div>
             </div>
 

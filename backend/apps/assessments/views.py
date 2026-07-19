@@ -10,6 +10,7 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
+from backend.apps.assessments.config import ASSESSMENT_CONFIG, ASSESSMENT_PREPGIA
 from .models import Attempt, AttemptMode, AttemptStatus, SectionType
 from .services import (
     SECTION_TIME_LIMITS,
@@ -34,12 +35,14 @@ class SectionCatalogView(View):
             {
                 "sections": [
                     {
-                        "key": key,
-                        "label": label,
-                        "time_limit_seconds": SECTION_TIME_LIMITS[key],
+                        "key": module["key"],
+                        "label": module["title"],
+                        "assessment_type": assessment_type,
+                        "time_limit_seconds": SECTION_TIME_LIMITS[module["key"]],
                         "available_in_section_mode": True,
                     }
-                    for key, label in SectionType.choices
+                    for assessment_type, config in ASSESSMENT_CONFIG.items()
+                    for module in config["modules"]
                 ],
                 "rules": {
                     "default_user_role": "free",
@@ -59,28 +62,37 @@ class AttemptStartView(View):
         payload = json.loads(request.body or "{}")
         mode = payload.get("mode", AttemptMode.SECTION)
         difficulty = payload.get("difficulty", "easy")
+        assessment_type = payload.get("assessment_type", ASSESSMENT_PREPGIA)
         section_type = payload.get("section_type")
 
         if mode == AttemptMode.SECTION and section_type not in {choice for choice, _ in SectionType.choices}:
             return JsonResponse({"detail": "Valid section_type is required for a section-wise test."}, status=400)
 
         logger.info(
-            "Attempt start requested user_id=%s mode=%s difficulty=%s section_type=%s",
+            "Attempt start requested user_id=%s assessment_type=%s mode=%s difficulty=%s section_type=%s",
             request.user.id,
+            assessment_type,
             mode,
             difficulty,
             section_type or "n/a",
         )
-        access = can_start_attempt(request.user, mode)
+        access = can_start_attempt(request.user, mode, assessment_type=assessment_type)
         if not access.allowed:
             logger.warning("Attempt start denied user_id=%s mode=%s reason=%s", request.user.id, mode, access.message)
             return JsonResponse({"detail": access.message}, status=403)
 
-        attempt = create_attempt(request.user, mode, difficulty=difficulty, section_type=section_type)
-        logger.info("Attempt start completed user_id=%s attempt_id=%s mode=%s", request.user.id, attempt.id, mode)
+        attempt = create_attempt(
+            request.user,
+            mode,
+            difficulty=difficulty,
+            section_type=section_type,
+            assessment_type=assessment_type,
+        )
+        logger.info("Attempt start completed user_id=%s attempt_id=%s assessment_type=%s mode=%s", request.user.id, attempt.id, assessment_type, mode)
         return JsonResponse(
             {
                 "attempt_id": attempt.id,
+                "assessment_type": attempt.assessment_type,
                 "mode": attempt.mode,
                 "status": attempt.status,
                 "sections": [
@@ -181,13 +193,20 @@ class PracticeProgressUpdateView(LoginRequiredMixin, View):
     def post(self, request):
         payload = json.loads(request.body or "{}")
         section_type = payload.get("section_type")
+        assessment_type = payload.get("assessment_type", ASSESSMENT_PREPGIA)
         if section_type not in {choice for choice, _ in SectionType.choices}:
             return JsonResponse({"detail": "Valid section_type is required."}, status=400)
 
         solved_increment = int(payload.get("solved_increment", 1) or 1)
-        progress = record_practice_progress(request.user, section_type, solved_increment=solved_increment)
+        progress = record_practice_progress(
+            request.user,
+            section_type,
+            solved_increment=solved_increment,
+            assessment_type=assessment_type,
+        )
         return JsonResponse(
             {
+                "assessment_type": assessment_type,
                 "section_type": section_type,
                 "practice_questions_solved": progress.practice_questions_solved,
                 "tests_taken": progress.tests_taken,

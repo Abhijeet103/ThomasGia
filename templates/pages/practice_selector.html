@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section">
+    <span class="eyebrow">Practice tracks</span>
+    <h1 class="section-title">Choose your assessment</h1>
+    <p class="section-copy">Pick the test family you want to prepare for. Each track supports module practice, module tests, and full tests.</p>
+
+    <div class="practice-card-grid practice-assessment-grid">
+        {% for assessment in assessments %}
+            <article class="card practice-section-card">
+                <div class="practice-card-top">
+                    <div class="practice-card-icon" aria-hidden="true">
+                        {% if assessment.key == "prepgia" %}
+                            <svg viewBox="0 0 24 24" class="practice-icon-svg">
+                                <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.75c.62.43 1 1.12 1 1.87V17h6v-.38c0-.75.38-1.44 1-1.87A7 7 0 0 0 12 2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        {% else %}
+                            <svg viewBox="0 0 24 24" class="practice-icon-svg">
+                                <path d="M4 19h16M7 16V9M12 16V5M17 16v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <h2 class="practice-card-title">{{ assessment.title }}</h2>
+
+                <div class="practice-card-meta">
+                    <span>
+                        <svg viewBox="0 0 24 24" class="practice-meta-icon" aria-hidden="true">
+                            <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        {{ assessment.module_count }} modules
+                    </span>
+                </div>
+
+                <div class="practice-card-stats">
+                    <span>{{ assessment.description }}</span>
+                </div>
+
+                <div class="practice-card-actions">
+                    <a href="{% url 'pages:assessment-practice' assessment.key %}" class="practice-button-primary">Open practice</a>
+                </div>
+            </article>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

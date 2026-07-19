@@ -47,6 +47,7 @@ function initSectionPlayer() {
   let correctCount = 0;
   let feedbackTimeout = null;
   const mode = player.dataset.mode || "practice";
+  const assessmentType = player.dataset.assessmentType || "prepgia";
   const sectionKey = player.dataset.sectionKey || "";
   const practiceTotal = Number(player.dataset.practiceTotal || 0);
   let practiceSolved = Number(player.dataset.practiceSolved || 0);
@@ -55,6 +56,9 @@ function initSectionPlayer() {
   let timerInterval = null;
   let finished = false;
   let testStarted = false;
+  let practiceStarted = false;
+  let practiceElapsedSeconds = 0;
+  let practiceTimerInterval = null;
   const submittedAnswers = [];
 
   const seedEl = player.querySelector("[data-test-seed]");
@@ -73,6 +77,7 @@ function initSectionPlayer() {
   const completeStage = player.querySelector('[data-test-stage="complete"]');
   const introStage = player.querySelector('[data-test-stage="intro"]');
   const fullscreenStartButton = player.querySelector("[data-test-fullscreen-start]");
+  const practiceStartButton = player.querySelector("[data-test-practice-start]");
   const endTestButton = player.querySelector("[data-test-end]");
 
   const syncFullscreenTestUI = () => {
@@ -119,7 +124,16 @@ function initSectionPlayer() {
   const updateTimer = () => {
     if (!timerEl) return;
     if (mode !== "test") {
-      timerEl.textContent = "no timer in practice mode";
+      if (!practiceStarted) {
+        const suggestedSeconds = practiceTotal ? Math.max(1, Math.round(timeLimitSeconds / practiceTotal)) : 0;
+        timerEl.textContent = suggestedSeconds
+          ? `Target pace ~${formatSeconds(suggestedSeconds)} per question`
+          : "Start practice when ready";
+        return;
+      }
+      const solvedCount = Math.max(practiceSolved, 1);
+      const averageSeconds = Math.round(practiceElapsedSeconds / solvedCount);
+      timerEl.textContent = `Average time ${formatSeconds(averageSeconds)} per solved question`;
       return;
     }
     const minutes = Math.floor(remainingSeconds / 60);
@@ -159,7 +173,7 @@ function initSectionPlayer() {
           "Content-Type": "application/json",
           "X-CSRFToken": getCookie("csrftoken"),
         },
-        body: JSON.stringify({ section_type: sectionKey, solved_increment: 1 }),
+        body: JSON.stringify({ assessment_type: assessmentType, section_type: sectionKey, solved_increment: 1 }),
       });
     } catch (error) {
       // Practice progress sync is helpful but should not block the player flow.
@@ -174,6 +188,9 @@ function initSectionPlayer() {
     syncFullscreenTestUI();
     if (timerInterval) {
       window.clearInterval(timerInterval);
+    }
+    if (practiceTimerInterval) {
+      window.clearInterval(practiceTimerInterval);
     }
     if (completeSummaryEl) {
       const base = `You answered ${correctCount} out of ${questions.length} correctly.`;
@@ -329,9 +346,30 @@ function initSectionPlayer() {
     return;
   }
 
+  practiceStartButton?.addEventListener("click", () => {
+    if (practiceStarted) {
+      return;
+    }
+    practiceStarted = true;
+    practiceElapsedSeconds = 0;
+    updateProgress();
+    updateTimer();
+    practiceTimerInterval = window.setInterval(() => {
+      practiceElapsedSeconds += 1;
+      updateTimer();
+    }, 1000);
+    renderQuestion();
+  });
+
   updateProgress();
   updateTimer();
-  renderQuestion();
+  showStage(introStage);
+}
+
+function formatSeconds(totalSeconds) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function initFullTestPlayer() {

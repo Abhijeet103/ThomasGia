@@ -15,10 +15,18 @@ from django.db.models import Prefetch
 from django.views import View
 
 from backend.apps.billing.services import build_plan_cards, sync_user_subscription_access
+from backend.apps.assessments.config import (
+    ASSESSMENT_CCAT,
+    ASSESSMENT_PREPGIA,
+    get_assessment_cards,
+    get_assessment_config,
+    get_assessment_module_keys,
+    get_module_meta,
+    get_time_limit_seconds,
+)
 from backend.apps.assessments.models import AttemptMode, AttemptSection, AttemptStatus, SectionProgress, SectionType
 from backend.apps.assessments.services import (
     FullTestSessionError,
-    SECTION_TIME_LIMITS,
     can_start_attempt,
     expire_stale_attempts,
     get_or_create_full_test_attempt,
@@ -28,42 +36,63 @@ from backend.apps.assessments.services import (
 from prepgia.generators import generate_question
 from prepgia.preview_data import get_questions
 
-
-SECTION_META = {
-    SectionType.REASONING: {
-        "title": "Reasoning",
-        "description": "Comparative and transitive logic questions under timed conditions.",
-    },
-    SectionType.PERCEPTUAL_SPEED: {
-        "title": "Perceptual Speed",
-        "description": "Fast letter-pair matching built to simulate GIA-style pressure.",
-    },
-    SectionType.NUMBER_SPEED_ACCURACY: {
-        "title": "Number Speed & Accuracy",
-        "description": "Find the number furthest from the median with speed and accuracy.",
-    },
-    SectionType.WORD_MEANING: {
-        "title": "Word Meaning",
-        "description": "Odd-one-out vocabulary sets backed by a curated word bank.",
-    },
-    SectionType.SPATIAL_VISUALIZATION: {
-        "title": "Spatial Visualization",
-        "description": "Decide whether abstract shapes are rotated matches or mirrored variants.",
-    },
-}
-
-SECTION_INSTRUCTIONS = {
-    SectionType.REASONING: "Read the context statements first. Once you understand the relationship, reveal the question and choose the correct person or thing.",
-    SectionType.PERCEPTUAL_SPEED: "Look at the letter pairs carefully. Count the matching pairs quickly before selecting the correct number.",
-    SectionType.NUMBER_SPEED_ACCURACY: "Review the three numbers, identify the middle value mentally, and choose the number furthest from it.",
-    SectionType.WORD_MEANING: "Read the words shown in the context, spot the odd one out, and then choose it from the answer options.",
-    SectionType.SPATIAL_VISUALIZATION: "Study the shapes first, then decide whether they are the same when rotated or if one is mirrored.",
-}
-
 SECTION_PRACTICE_GENERATION_COUNT = 40
 SECTION_PRACTICE_PAID_COUNT = 100
 SECTION_PRACTICE_GOAL = 50
 logger = logging.getLogger(__name__)
+
+
+ESTIMATE_BASELINES = {
+    ASSESSMENT_PREPGIA: {
+        "full_test": 56,
+        "reasoning": 57,
+        "perceptual_speed": 54,
+        "number_speed_accuracy": 55,
+        "word_meaning": 58,
+        "spatial_visualization": 53,
+    },
+    ASSESSMENT_CCAT: {
+        "full_test": 58,
+        "ccat_numerical": 57,
+        "ccat_verbal": 59,
+        "ccat_spatial": 56,
+    },
+}
+
+
+def _estimate_percentile(score: float | int | None, assessment_type: str, section_type: str | None = None) -> int:
+    if score is None:
+        return 1
+    baseline_map = ESTIMATE_BASELINES.get(assessment_type, {})
+    baseline_key = str(section_type) if section_type else "full_test"
+    baseline = baseline_map.get(baseline_key, baseline_map.get("full_test", 55))
+    percentile = round(50 + (float(score) - baseline) * 1.6)
+    return max(1, min(99, percentile))
+
+
+def _estimate_iq_band(percentile: int) -> tuple[str, str]:
+    if percentile >= 98:
+        return "130+", "Very superior range"
+    if percentile >= 91:
+        return "120-129", "Superior range"
+    if percentile >= 75:
+        return "110-119", "High average range"
+    if percentile >= 25:
+        return "90-109", "Average range"
+    if percentile >= 10:
+        return "80-89", "Low average range"
+    return "Below 80", "Developing range"
+
+
+def _build_estimate(score: float | int | None, assessment_type: str, section_type: str | None = None) -> dict[str, object]:
+    percentile = _estimate_percentile(score, assessment_type, section_type)
+    iq_range, band = _estimate_iq_band(percentile)
+    return {
+        "percentile": percentile,
+        "percentile_label": f"{percentile}th percentile",
+        "iq_range": iq_range,
+        "band": band,
+    }
 
 
 class HomePageView(TemplateView):
@@ -71,13 +100,16 @@ class HomePageView(TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        prepgia_config = get_assessment_config(ASSESSMENT_PREPGIA)
         all_questions = get_questions()
         context.update(
             {
-                "page_title": "PrepGIA | Thomas GIA Practice Platform",
-                "meta_description": "Timed Thomas GIA practice tests with full mocks, section-wise drills, Google login, and subscription paywall support.",
+                "page_title": "MindMetric | Cognitive And Psychometric Test Practice Platform",
+                "meta_description": "Practice CCAT and Thomas GIA-style cognitive tests with module drills, full mocks, Google login, and subscription access.",
                 "question_count": len(all_questions),
-                "sections": _section_cards(),
+                "sections": _section_cards(ASSESSMENT_PREPGIA),
+                "home_assessments": get_assessment_cards(),
+                "home_eyebrow": prepgia_config["eyebrow"],
             }
         )
         return context
@@ -94,8 +126,8 @@ class PricingPageView(TemplateView):
             active_subscription = self.request.user.subscriptions.filter(status="active").order_by("-updated_at").first()
         context.update(
             {
-                "page_title": "Pricing | PrepGIA",
-                "meta_description": "View free and paid plans for PrepGIA practice tests.",
+                "page_title": "Pricing | MindMetric",
+                "meta_description": "View free and paid plans for MindMetric practice tests.",
                 "active_subscription": active_subscription,
                 "plans": build_plan_cards(self.request.user, active_subscription),
             }
@@ -113,8 +145,8 @@ class SubscriptionPageView(LoginRequiredMixin, TemplateView):
         active_subscription = self.request.user.subscriptions.filter(status="active").order_by("-updated_at").first()
         context.update(
             {
-                "page_title": "Subscription | PrepGIA",
-                "meta_description": "View your PrepGIA subscription status and manage cancellation.",
+                "page_title": "Subscription | MindMetric",
+                "meta_description": "View your MindMetric subscription status and manage cancellation.",
                 "active_subscription": active_subscription,
                 "subscription_expires_at": self.request.user.subscription_expires_at,
                 "plans": build_plan_cards(self.request.user, active_subscription),
@@ -125,6 +157,21 @@ class SubscriptionPageView(LoginRequiredMixin, TemplateView):
 
 
 class PracticePageView(TemplateView):
+    template_name = "pages/practice_selector.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(
+            {
+                "page_title": "Practice | MindMetric",
+                "meta_description": "Choose between Thomas GIA and CCAT practice tracks.",
+                "assessments": get_assessment_cards(),
+            }
+        )
+        return context
+
+
+class AssessmentPracticePageView(TemplateView):
     template_name = "pages/practice.html"
 
     def get_context_data(self, **kwargs):
@@ -132,14 +179,16 @@ class PracticePageView(TemplateView):
         from backend.apps.accounts.models import UserRole
         from backend.apps.assessments.models import Attempt, AttemptMode
         context = super().get_context_data(**kwargs)
-        sections = _practice_section_cards(self.request)
+        assessment_type = self.kwargs["assessment_slug"]
+        assessment_config = get_assessment_config(assessment_type)
+        sections = _practice_section_cards(self.request, assessment_type)
         user = self.request.user
         if user.is_authenticated and getattr(user, "role", UserRole.FREE) == UserRole.PAID:
             full_test_attempts_left = None
             module_test_attempts_left = None
         elif user.is_authenticated:
-            full_used = Attempt.objects.filter(user=user, mode=AttemptMode.FULL_TEST).count()
-            module_used = Attempt.objects.filter(user=user, mode=AttemptMode.SECTION).count()
+            full_used = Attempt.objects.filter(user=user, mode=AttemptMode.FULL_TEST, assessment_type=assessment_type).count()
+            module_used = Attempt.objects.filter(user=user, mode=AttemptMode.SECTION, assessment_type=assessment_type).count()
             full_test_attempts_left = max(0, FREE_FULL_TEST_LIMIT - full_used)
             module_test_attempts_left = max(0, FREE_SECTION_TEST_LIMIT - module_used)
         else:
@@ -147,8 +196,10 @@ class PracticePageView(TemplateView):
             module_test_attempts_left = FREE_SECTION_TEST_LIMIT
         context.update(
             {
-                "page_title": "Practice Tests | PrepGIA",
-                "meta_description": "Choose full test or section-wise Thomas GIA practice modes.",
+                "page_title": f"{assessment_config['title']} Practice | MindMetric",
+                "meta_description": f"Choose full test or module-wise practice for {assessment_config['title']}.",
+                "assessment": assessment_config,
+                "assessment_slug": assessment_type,
                 "sections": sections,
                 "sections_started": sum(1 for section in sections if section["status_class"] != "status-not-started"),
                 "sections_total": len(sections),
@@ -165,20 +216,21 @@ class SectionsPageView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         sections = []
-        for key, meta in SECTION_META.items():
+        for key in get_assessment_module_keys(ASSESSMENT_PREPGIA):
+            meta = get_module_meta(key)
             sections.append(
                 {
                     "key": key,
                     "title": meta["title"],
                     "description": meta["description"],
-                    "time_limit_seconds": SECTION_TIME_LIMITS[key],
+                    "time_limit_seconds": get_time_limit_seconds(key),
                     "sample_count": len(get_questions(key)),
                 }
             )
         context.update(
             {
-                "page_title": "Sections | PrepGIA",
-                "meta_description": "Browse all five Thomas GIA-style sections available in PrepGIA.",
+                "page_title": "Sections | MindMetric",
+                "meta_description": "Browse all five Thomas GIA-style sections available in MindMetric.",
                 "sections": sections,
             }
         )
@@ -191,13 +243,22 @@ class FullTestPageView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        assessment_type = self.kwargs.get("assessment_slug", ASSESSMENT_PREPGIA)
+        assessment_config = get_assessment_config(assessment_type)
+        section_meta = {module["key"]: {"title": module["title"], "description": module["description"]} for module in assessment_config["modules"]}
+        instructions = {module["key"]: module["instruction"] for module in assessment_config["modules"]}
         full_test_data = []
         full_test_attempt_id = None
         access_error = None
         try:
-            attempt = get_or_create_full_test_attempt(self.request.user)
+            attempt = get_or_create_full_test_attempt(self.request.user, assessment_type=assessment_type)
             full_test_attempt_id = attempt.id
-            full_test_data = serialize_full_test_attempt_for_frontend(attempt, SECTION_META, SECTION_INSTRUCTIONS)
+            full_test_data = serialize_full_test_attempt_for_frontend(
+                attempt,
+                section_meta,
+                instructions,
+                assessment_config["full_test_practice_count"],
+            )
         except PermissionError as exc:
             access_error = str(exc)
         except FullTestSessionError:
@@ -205,8 +266,10 @@ class FullTestPageView(LoginRequiredMixin, TemplateView):
             access_error = "Full test is temporarily unavailable. Please try again in a moment."
         context.update(
             {
-                "page_title": "Full Test | PrepGIA",
-                "meta_description": "Run through all PrepGIA sections in one full guided flow with practice and timed test phases.",
+                "page_title": f"{assessment_config['title']} Full Test | MindMetric",
+                "meta_description": f"Run through all {assessment_config['title']} modules in one guided flow with practice and timed test phases.",
+                "assessment": assessment_config,
+                "assessment_slug": assessment_type,
                 "full_test_data": full_test_data,
                 "full_test_attempt_id": full_test_attempt_id,
                 "full_test_question_url": f"/api/tests/full-tests/{full_test_attempt_id}/question/" if full_test_attempt_id else "",
@@ -222,30 +285,38 @@ class SectionDetailPageView(TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        slug = kwargs["slug"]
+        assessment_type = self.kwargs.get("assessment_slug", ASSESSMENT_PREPGIA)
+        assessment_config = get_assessment_config(assessment_type)
+        slug = self.kwargs["slug"]
         try:
             section_type = SectionType(slug)
         except ValueError as exc:
             raise Http404("Section not found.") from exc
+        if section_type not in get_assessment_module_keys(assessment_type):
+            raise Http404("Section not found.")
 
         mode = self.request.GET.get("mode", "practice")
         if mode not in {"practice", "test"}:
             mode = "practice"
 
-        meta = SECTION_META[section_type]
+        meta = get_module_meta(section_type)
         section_attempt_id = None
         section_submit_url = ""
         section_access_error = ""
-        practice_question_total = max(1, SECTION_TIME_LIMITS[section_type] // 2)
+        practice_question_total = max(1, get_time_limit_seconds(section_type) // 2)
         practice_questions_solved = 0
         if self.request.user.is_authenticated:
-            progress = SectionProgress.objects.filter(user=self.request.user, section_type=section_type).first()
+            progress = SectionProgress.objects.filter(
+                user=self.request.user,
+                assessment_type=assessment_type,
+                section_type=section_type,
+            ).first()
             if progress is not None:
                 practice_questions_solved = progress.practice_questions_solved
         practice_progress_percent = min(round((practice_questions_solved / practice_question_total) * 100), 100) if practice_question_total else 0
         if mode == "test" and self.request.user.is_authenticated:
             try:
-                attempt = get_or_create_section_attempt(self.request.user, section_type)
+                attempt = get_or_create_section_attempt(self.request.user, section_type, assessment_type=assessment_type)
                 section_attempt_id = attempt.id
                 attempt_section = next(iter(attempt.sections.all()), None)
                 previews = [_build_generated_preview(item) for item in (attempt_section.question_payload if attempt_section else [])]
@@ -257,14 +328,16 @@ class SectionDetailPageView(TemplateView):
             previews = _build_section_questions(section_type, mode, user=self.request.user)
         context.update(
             {
-                "page_title": f"{meta['title']} {mode.title()} | PrepGIA",
+                "page_title": f"{meta['title']} {mode.title()} | MindMetric",
                 "meta_description": meta["description"],
+                "assessment": assessment_config,
+                "assessment_slug": assessment_type,
                 "section": {
                     "key": section_type,
                     "title": meta["title"],
                     "description": meta["description"],
-                    "instruction": SECTION_INSTRUCTIONS[section_type],
-                    "time_limit_seconds": SECTION_TIME_LIMITS[section_type],
+                    "instruction": meta["instruction"],
+                    "time_limit_seconds": get_time_limit_seconds(section_type),
                     "question_count": len(previews),
                     "practice_question_total": practice_question_total,
                     "practice_questions_solved": practice_questions_solved,
@@ -306,8 +379,8 @@ class LoginPageView(View):
 
     def _context(self, request, form):
         return {
-            "page_title": "Login | PrepGIA",
-            "meta_description": "Sign in to PrepGIA with email and password or continue with Google.",
+            "page_title": "Login | MindMetric",
+            "meta_description": "Sign in to MindMetric with email and password or continue with Google.",
             "google_login_path": "/accounts/google/login/",
             "form": form,
             "next_value": request.GET.get("next", ""),
@@ -338,13 +411,15 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
         active_attempt_rows = []
         for attempt in active_attempts:
             first_section = next(iter(attempt.sections.all()), None)
-            section_title = SECTION_META[first_section.section_type]["title"] if first_section else "-"
-            continue_url = reverse("pages:full-test") if attempt.mode == AttemptMode.FULL_TEST else ""
+            section_title = get_module_meta(first_section.section_type)["title"] if first_section else "-"
+            continue_url = reverse("pages:assessment-full-test", args=[attempt.assessment_type]) if attempt.mode == AttemptMode.FULL_TEST else ""
             if attempt.mode == AttemptMode.SECTION and first_section:
-                continue_url = f"{reverse('pages:section-detail', args=[first_section.section_type])}?mode=test"
+                continue_url = f"{reverse('pages:assessment-section-detail', args=[attempt.assessment_type, first_section.section_type])}?mode=test"
             active_attempt_rows.append(
                 {
                     "attempt_id": attempt.id,
+                    "assessment_key": attempt.assessment_type,
+                    "assessment_title": get_assessment_config(attempt.assessment_type)["title"],
                     "mode_label": attempt.get_mode_display(),
                     "section_title": section_title,
                     "status_label": attempt.get_status_display(),
@@ -357,13 +432,22 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
         recent_attempt_rows = []
         for attempt in recent_attempts:
             first_section = next(iter(attempt.sections.all()), None)
+            estimate = _build_estimate(
+                attempt.overall_adjusted_score,
+                attempt.assessment_type,
+                first_section.section_type if attempt.mode == AttemptMode.SECTION and first_section else None,
+            )
             recent_attempt_rows.append(
                 {
                     "attempt_id": attempt.id,
+                    "assessment_key": attempt.assessment_type,
+                    "assessment_title": get_assessment_config(attempt.assessment_type)["title"],
                     "mode_label": attempt.get_mode_display(),
-                    "section_title": SECTION_META[first_section.section_type]["title"] if first_section else "-",
+                    "section_title": get_module_meta(first_section.section_type)["title"] if first_section else "-",
                     "status_label": attempt.get_status_display(),
                     "score": attempt.overall_adjusted_score,
+                    "estimate_percentile_label": estimate["percentile_label"],
+                    "estimate_band": estimate["band"],
                     "started_at": attempt.started_at,
                     "completed_at": attempt.completed_at,
                 }
@@ -374,11 +458,16 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
             section = next(iter(attempt.sections.all()), None)
             if section is None:
                 continue
+            estimate = _build_estimate(section.adjusted_score, attempt.assessment_type, section.section_type)
             section_score_rows.append(
                 {
                     "attempt_id": attempt.id,
-                    "section_title": SECTION_META[section.section_type]["title"],
+                    "assessment_key": attempt.assessment_type,
+                    "assessment_title": get_assessment_config(attempt.assessment_type)["title"],
+                    "section_title": get_module_meta(section.section_type)["title"],
                     "score": section.adjusted_score,
+                    "estimate_percentile_label": estimate["percentile_label"],
+                    "estimate_iq_range": estimate["iq_range"],
                     "question_count": section.question_count,
                     "time_limit_seconds": section.time_limit_seconds,
                     "completed_at": attempt.completed_at,
@@ -388,77 +477,160 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
         full_test_rows = []
         for attempt in full_test_attempts:
             section_scores = {section.section_type: section.adjusted_score for section in attempt.sections.all()}
+            module_keys = get_assessment_module_keys(attempt.assessment_type)
+            estimate = _build_estimate(attempt.overall_adjusted_score, attempt.assessment_type)
             full_test_rows.append(
                 {
                     "attempt_id": attempt.id,
+                    "assessment_key": attempt.assessment_type,
+                    "assessment_title": get_assessment_config(attempt.assessment_type)["title"],
                     "completed_at": attempt.completed_at,
                     "overall_score": attempt.overall_adjusted_score,
-                    "ordered_section_scores": [section_scores.get(key, "-") for key in SECTION_META],
+                    "estimate_percentile_label": estimate["percentile_label"],
+                    "estimate_iq_range": estimate["iq_range"],
+                    "ordered_section_scores": [section_scores.get(key, "-") for key in module_keys],
+                    "module_score_summary": ", ".join(
+                        f"{get_module_meta(key)['title']}: {section_scores.get(key, '-')}" for key in module_keys
+                    ),
                 }
             )
 
         # Build chart data keyed by "full_test" and each section type
-        chart_data = {"full_test": []}
-        for key in SECTION_META:
-            chart_data[str(key)] = []
+        chart_data = {}
+        assessment_cards = []
+        assessment_estimates = {}
+        for assessment_key in (ASSESSMENT_PREPGIA, ASSESSMENT_CCAT):
+            config = get_assessment_config(assessment_key)
+            assessment_cards.append(
+                {
+                    "key": assessment_key,
+                    "title": config["title"],
+                    "description": config["description"],
+                    "module_count": len(config["modules"]),
+                }
+            )
+            chart_data[assessment_key] = {"full_test": []}
+            assessment_estimates[assessment_key] = {
+                "percentile_label": "No estimate yet",
+                "iq_range": "-",
+                "band": "Complete a test to unlock an estimated range.",
+                "based_on": "No completed attempts yet",
+            }
+            for module in config["modules"]:
+                chart_data[assessment_key][str(module["key"])] = []
 
         for i, attempt in enumerate(reversed(full_test_attempts), start=1):
             score = attempt.overall_adjusted_score
             label = attempt.completed_at.strftime("%-d %b") if attempt.completed_at else f"#{i}"
-            chart_data["full_test"].append({"label": label, "score": score if score is not None else 0})
+            estimate = _build_estimate(score, attempt.assessment_type)
+            chart_data[attempt.assessment_type]["full_test"].append(
+                {
+                    "label": label,
+                    "score": score if score is not None else 0,
+                    "percentile": estimate["percentile"],
+                }
+            )
 
         section_chart_attempts = (
             self.request.user.attempts.filter(mode=AttemptMode.SECTION, status="completed")
             .prefetch_related(Prefetch("sections", queryset=AttemptSection.objects.order_by("order_index")))
             .order_by("completed_at")
         )
-        section_counters = {str(key): 0 for key in SECTION_META}
+        section_counters = {
+            assessment_key: {str(module["key"]): 0 for module in get_assessment_config(assessment_key)["modules"]}
+            for assessment_key in (ASSESSMENT_PREPGIA, ASSESSMENT_CCAT)
+        }
         for attempt in section_chart_attempts:
             section = next(iter(attempt.sections.all()), None)
             if section is None:
                 continue
+            if section.section_type not in get_assessment_module_keys(attempt.assessment_type):
+                continue
             key = str(section.section_type)
-            section_counters[key] += 1
-            label = attempt.completed_at.strftime("%-d %b") if attempt.completed_at else f"#{section_counters[key]}"
+            section_counters[attempt.assessment_type][key] += 1
+            label = attempt.completed_at.strftime("%-d %b") if attempt.completed_at else f"#{section_counters[attempt.assessment_type][key]}"
             score = section.adjusted_score
-            chart_data[key].append({"label": label, "score": score if score is not None else 0})
+            estimate = _build_estimate(score, attempt.assessment_type, section.section_type)
+            chart_data[attempt.assessment_type][key].append(
+                {
+                    "label": label,
+                    "score": score if score is not None else 0,
+                    "percentile": estimate["percentile"],
+                }
+            )
 
-        section_tabs = [{"key": str(k), "title": v["title"]} for k, v in SECTION_META.items()]
+        for assessment_key in (ASSESSMENT_PREPGIA, ASSESSMENT_CCAT):
+            latest_attempt = next(
+                (
+                    attempt for attempt in attempts
+                    if attempt.assessment_type == assessment_key and attempt.status == AttemptStatus.COMPLETED
+                ),
+                None,
+            )
+            if latest_attempt is None:
+                continue
+            first_section = next(iter(latest_attempt.sections.all()), None)
+            estimate = _build_estimate(
+                latest_attempt.overall_adjusted_score,
+                latest_attempt.assessment_type,
+                first_section.section_type if latest_attempt.mode == AttemptMode.SECTION and first_section else None,
+            )
+            based_on = "Based on latest full test" if latest_attempt.mode == AttemptMode.FULL_TEST else "Based on latest module test"
+            assessment_estimates[assessment_key] = {
+                "percentile_label": estimate["percentile_label"],
+                "iq_range": estimate["iq_range"],
+                "band": estimate["band"],
+                "based_on": based_on,
+            }
+
+        section_tabs = {
+            assessment_key: [
+                {"key": module["key"], "title": module["title"]}
+                for module in get_assessment_config(assessment_key)["modules"]
+            ]
+            for assessment_key in (ASSESSMENT_PREPGIA, ASSESSMENT_CCAT)
+        }
 
         context.update(
             {
-                "page_title": "Dashboard | PrepGIA",
-                "meta_description": "Track your PrepGIA access, attempts, and progress.",
+                "page_title": "Dashboard | MindMetric",
+                "meta_description": "Track your MindMetric access, attempts, and progress.",
                 "active_attempt_rows": active_attempt_rows,
                 "attempts": recent_attempt_rows,
                 "full_test_rows": full_test_rows,
                 "section_score_rows": section_score_rows,
-                "section_score_headers": [SECTION_META[key]["title"] for key in SECTION_META],
                 "expired_attempt_count": expired_count,
+                "assessment_cards": assessment_cards,
+                "assessment_estimates": assessment_estimates,
                 "chart_data": chart_data,
                 "section_tabs": section_tabs,
+                "default_assessment_key": ASSESSMENT_PREPGIA,
             }
         )
         return context
 
 
-def _section_cards():
+def _section_cards(assessment_type: str):
     return [
-        {"key": key, "title": meta["title"], "description": meta["description"], "sample_count": len(get_questions(key))}
-        for key, meta in SECTION_META.items()
+        {"key": key, "title": get_module_meta(key)["title"], "description": get_module_meta(key)["description"], "sample_count": len(get_questions(key))}
+        for key in get_assessment_module_keys(assessment_type)
     ]
 
 
-def _practice_section_cards(request):
+def _practice_section_cards(request, assessment_type: str):
     progress_by_section = {}
     active_attempts = {}
     if request.user.is_authenticated:
         progress_by_section = {
             item.section_type: item
-            for item in SectionProgress.objects.filter(user=request.user)
+            for item in SectionProgress.objects.filter(user=request.user, assessment_type=assessment_type)
         }
         for attempt in (
-            request.user.attempts.filter(mode=AttemptMode.SECTION, status__in=[AttemptStatus.CREATED, AttemptStatus.IN_PROGRESS])
+            request.user.attempts.filter(
+                assessment_type=assessment_type,
+                mode=AttemptMode.SECTION,
+                status__in=[AttemptStatus.CREATED, AttemptStatus.IN_PROGRESS],
+            )
             .prefetch_related(
                 Prefetch("sections", queryset=AttemptSection.objects.order_by("order_index"))
             )
@@ -469,7 +641,8 @@ def _practice_section_cards(request):
                 active_attempts[first_section.section_type] = attempt
 
     cards = []
-    for index, (key, meta) in enumerate(SECTION_META.items()):
+    for index, key in enumerate(get_assessment_module_keys(assessment_type)):
+        meta = get_module_meta(key)
         progress = progress_by_section.get(key)
         practice_solved = progress.practice_questions_solved if progress else 0
         tests_taken = progress.tests_taken if progress else 0
@@ -498,8 +671,8 @@ def _practice_section_cards(request):
                 "key": key,
                 "title": meta["title"],
                 "description": meta["description"],
-                "question_count": max(1, SECTION_TIME_LIMITS[key] // 2),
-                "duration_minutes": max(1, SECTION_TIME_LIMITS[key] // 60),
+                "question_count": max(1, get_time_limit_seconds(key) // 2),
+                "duration_minutes": max(1, get_time_limit_seconds(key) // 60),
                 "practice_solved": practice_solved,
                 "tests_taken": tests_taken,
                 "progress_percent": progress_percent,
@@ -507,7 +680,7 @@ def _practice_section_cards(request):
                 "status_class": status_class,
                 "action_label": action_label,
                 "action_class": "practice-button-secondary" if status_class == "status-in-progress" else "practice-button-primary",
-                "action_url": f"{reverse('pages:section-detail', args=[key])}?mode=practice",
+                "action_url": f"{reverse('pages:assessment-section-detail', args=[assessment_type, key])}?mode=practice",
                 "theme_class": f"section-theme-{index % 3}",
             }
         )
@@ -517,9 +690,9 @@ def _practice_section_cards(request):
 def _build_section_questions(section_type: str, mode: str, user=None) -> list[dict]:
     difficulty = "easy" if mode == "practice" else "medium"
     if mode == "practice":
-        question_count = max(1, SECTION_TIME_LIMITS[section_type] // 2)
+        question_count = max(1, get_time_limit_seconds(section_type) // 2)
     else:
-        question_count = SECTION_TIME_LIMITS[section_type]
+        question_count = get_time_limit_seconds(section_type)
     session_id = uuid.uuid4().hex
     questions = []
     for index in range(question_count):
@@ -639,6 +812,18 @@ def _build_preview(item: dict, section_type: str) -> dict:
         )
         return preview
 
+    if section_type in {SectionType.CCAT_NUMERICAL, SectionType.CCAT_VERBAL, SectionType.CCAT_SPATIAL}:
+        preview.update(
+            {
+                "context_kind": "generic",
+                "instruction": prompt.get("instruction", ""),
+                "question_text": prompt.get("question", prompt.get("instruction", "Choose one answer.")),
+                "reveal_mode": "question_only",
+                "options": options,
+            }
+        )
+        return preview
+
     return preview
 
 
@@ -717,6 +902,17 @@ def _build_generated_preview(item: dict) -> dict:
                 "instruction": prompt.get("instruction", ""),
                 "letter_pairs": prompt.get("letter_pairs", []),
                 "question_text": "How many pairs show the same image?",
+            }
+        )
+        return preview
+
+    if section_type in {SectionType.CCAT_NUMERICAL, SectionType.CCAT_VERBAL, SectionType.CCAT_SPATIAL}:
+        preview.update(
+            {
+                "context_kind": "generic",
+                "instruction": prompt.get("instruction", ""),
+                "question_text": prompt.get("question", prompt.get("instruction", "Choose one answer.")),
+                "reveal_mode": "question_only",
             }
         )
         return preview

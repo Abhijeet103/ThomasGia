@@ -2,11 +2,9 @@
 
 {% block content %}
 <section class="content-section">
-    <span class="eyebrow">Full test</span>
-    <h1 class="section-title">Full guided practice and timed test</h1>
-    <p class="section-copy">
-        Each section is shown one by one. First you get instructions, then eight practice questions with instant feedback, then the timed test for that section.
-    </p>
+    <span class="eyebrow">{{ assessment.title }}</span>
+    <h1 class="section-title">{{ assessment.full_test_title }}</h1>
+    <p class="section-copy">{{ assessment.full_test_intro_copy }}</p>
 
     {% if full_test_access_error %}
         <div class="notice">{{ full_test_access_error }}</div>

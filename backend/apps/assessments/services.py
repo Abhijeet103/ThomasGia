@@ -12,20 +12,17 @@ from redis import Redis
 from redis.exceptions import RedisError
 
 from backend.apps.accounts.models import User, UserRole
+from backend.apps.assessments.config import (
+    ASSESSMENT_PREPGIA,
+    get_assessment_config,
+    get_assessment_module_keys,
+    get_module_assessment_type,
+    get_time_limit_seconds,
+)
 from prepgia.generators import SECTION_TYPES, generate_question
 
 from .models import Attempt, AttemptAnswer, AttemptMode, AttemptSection, AttemptStatus, SectionProgress, SectionType
 
-
-SECTION_TIME_LIMITS = {
-    SectionType.REASONING: 300,
-    SectionType.PERCEPTUAL_SPEED: 120,
-    SectionType.NUMBER_SPEED_ACCURACY: 120,
-    SectionType.WORD_MEANING: 180,
-    SectionType.SPATIAL_VISUALIZATION: 120,
-}
-
-FULL_TEST_PRACTICE_COUNT = 8
 ACTIVE_ATTEMPT_EXPIRY_SECONDS = 2 * 60 * 60
 _redis_client: Redis | None = None
 logger = logging.getLogger(__name__)
@@ -45,19 +42,22 @@ FREE_FULL_TEST_LIMIT = 1
 FREE_SECTION_TEST_LIMIT = 2
 FREE_PRACTICE_QUESTION_LIMIT = 10
 
-def can_start_attempt(user: User, mode: str) -> AccessDecision:
+
+SECTION_TIME_LIMITS = {section_type: get_time_limit_seconds(section_type) for section_type in SECTION_TYPES}
+
+def can_start_attempt(user: User, mode: str, assessment_type: str = ASSESSMENT_PREPGIA) -> AccessDecision:
     if user.role == UserRole.PAID:
         return AccessDecision(True, "")
 
     if mode == AttemptMode.FULL_TEST:
-        used = Attempt.objects.filter(user=user, mode=AttemptMode.FULL_TEST).count()
+        used = Attempt.objects.filter(user=user, mode=AttemptMode.FULL_TEST, assessment_type=assessment_type).count()
         if used >= FREE_FULL_TEST_LIMIT:
             return AccessDecision(False, f"Free users can take up to {FREE_FULL_TEST_LIMIT} full test. Upgrade to unlock unlimited access.")
         remaining = FREE_FULL_TEST_LIMIT - used
         return AccessDecision(True, f"Free tier: {remaining} full test remaining.")
 
     if mode == AttemptMode.SECTION:
-        used = Attempt.objects.filter(user=user, mode=AttemptMode.SECTION).count()
+        used = Attempt.objects.filter(user=user, mode=AttemptMode.SECTION, assessment_type=assessment_type).count()
         if used >= FREE_SECTION_TEST_LIMIT:
             return AccessDecision(False, f"Free users can take up to {FREE_SECTION_TEST_LIMIT} module tests. Upgrade to unlock unlimited access.")
         remaining = FREE_SECTION_TEST_LIMIT - used
@@ -66,24 +66,36 @@ def can_start_attempt(user: User, mode: str) -> AccessDecision:
     return AccessDecision(True, "")
 
 
-def create_attempt(user: User, mode: str, difficulty: str = "easy", section_type: str | None = None) -> Attempt:
-    decision = can_start_attempt(user, mode)
+def create_attempt(
+    user: User,
+    mode: str,
+    difficulty: str = "easy",
+    section_type: str | None = None,
+    assessment_type: str = ASSESSMENT_PREPGIA,
+) -> Attempt:
+    decision = can_start_attempt(user, mode, assessment_type=assessment_type)
     if not decision.allowed:
         raise PermissionError(decision.message)
 
-    attempt = Attempt.objects.create(user=user, mode=mode, status=AttemptStatus.IN_PROGRESS)
-    section_keys = [section_type] if mode == AttemptMode.SECTION and section_type else list(SECTION_TYPES)
+    attempt = Attempt.objects.create(
+        user=user,
+        assessment_type=assessment_type,
+        mode=mode,
+        status=AttemptStatus.IN_PROGRESS,
+    )
+    section_keys = [section_type] if mode == AttemptMode.SECTION and section_type else get_assessment_module_keys(assessment_type)
     logger.info(
-        "Creating attempt id=%s user_id=%s mode=%s difficulty=%s section_type=%s section_count=%s",
+        "Creating attempt id=%s user_id=%s assessment_type=%s mode=%s difficulty=%s section_type=%s section_count=%s",
         attempt.id,
         user.id,
+        assessment_type,
         mode,
         difficulty,
         section_type or "all",
         len(section_keys),
     )
     for index, section_key in enumerate(section_keys):
-        question_target = SECTION_TIME_LIMITS[section_key] if mode == AttemptMode.SECTION else 5
+        question_target = get_time_limit_seconds(section_key) if mode == AttemptMode.SECTION else 5
         logger.info(
             "Generating section attempt payload attempt_id=%s section=%s difficulty=%s question_count=%s",
             attempt.id,
@@ -102,7 +114,7 @@ def create_attempt(user: User, mode: str, difficulty: str = "easy", section_type
             section_type=section_key,
             order_index=index,
             difficulty=difficulty,
-            time_limit_seconds=SECTION_TIME_LIMITS[section_key],
+            time_limit_seconds=get_time_limit_seconds(section_key),
             question_count=len(payloads),
             question_payload=payloads,
         )
@@ -118,25 +130,32 @@ def create_attempt(user: User, mode: str, difficulty: str = "easy", section_type
     return attempt
 
 
-def get_or_create_full_test_attempt(user: User) -> Attempt:
-    decision = can_start_attempt(user, AttemptMode.FULL_TEST)
+def get_or_create_full_test_attempt(user: User, assessment_type: str = ASSESSMENT_PREPGIA) -> Attempt:
+    decision = can_start_attempt(user, AttemptMode.FULL_TEST, assessment_type=assessment_type)
     if not decision.allowed:
         raise PermissionError(decision.message)
-    attempt = Attempt.objects.create(user=user, mode=AttemptMode.FULL_TEST, status=AttemptStatus.IN_PROGRESS)
-    logger.info("Created new full test attempt_id=%s user_id=%s", attempt.id, user.id)
+    assessment_config = get_assessment_config(assessment_type)
+    full_test_practice_count = assessment_config["full_test_practice_count"]
+    attempt = Attempt.objects.create(
+        user=user,
+        assessment_type=assessment_type,
+        mode=AttemptMode.FULL_TEST,
+        status=AttemptStatus.IN_PROGRESS,
+    )
+    logger.info("Created new full test attempt_id=%s user_id=%s assessment_type=%s", attempt.id, user.id, assessment_type)
 
     session_sections = []
     existing_sections = {section.section_type: section for section in attempt.sections.all()}
-    for index, section_key in enumerate(SECTION_TYPES):
+    for index, section_key in enumerate(get_assessment_module_keys(assessment_type)):
         logger.info(
             "Generating full test section attempt_id=%s section=%s practice_count=%s test_count=%s",
             attempt.id,
             section_key,
-            FULL_TEST_PRACTICE_COUNT,
-            SECTION_TIME_LIMITS[section_key],
+            full_test_practice_count,
+            get_time_limit_seconds(section_key),
         )
-        practice_questions = _build_question_batch(attempt.id, section_key, "practice", FULL_TEST_PRACTICE_COUNT, "easy")
-        test_count = SECTION_TIME_LIMITS[section_key]
+        practice_questions = _build_question_batch(attempt.id, section_key, "practice", full_test_practice_count, "easy")
+        test_count = get_time_limit_seconds(section_key)
         test_questions = _build_question_batch(attempt.id, section_key, "test", test_count, "medium")
 
         section = existing_sections.get(section_key)
@@ -146,14 +165,14 @@ def get_or_create_full_test_attempt(user: User) -> Attempt:
                 section_type=section_key,
                 order_index=index,
                 difficulty="mixed",
-                time_limit_seconds=SECTION_TIME_LIMITS[section_key],
+                time_limit_seconds=get_time_limit_seconds(section_key),
                 question_count=len(test_questions),
                 question_payload={},
             )
         else:
             section.order_index = index
             section.difficulty = "mixed"
-            section.time_limit_seconds = SECTION_TIME_LIMITS[section_key]
+            section.time_limit_seconds = get_time_limit_seconds(section_key)
             section.question_count = len(test_questions)
             section.question_payload = {}
             section.save(update_fields=["order_index", "difficulty", "time_limit_seconds", "question_count", "question_payload"])
@@ -193,11 +212,18 @@ def get_or_create_full_test_attempt(user: User) -> Attempt:
     return attempt
 
 
-def get_or_create_section_attempt(user: User, section_type: str, difficulty: str = "medium") -> Attempt:
+def get_or_create_section_attempt(
+    user: User,
+    section_type: str,
+    difficulty: str = "medium",
+    assessment_type: str | None = None,
+) -> Attempt:
+    resolved_assessment_type = assessment_type or get_module_assessment_type(section_type)
     expire_stale_attempts(user)
     active_attempt = (
         Attempt.objects.filter(
             user=user,
+            assessment_type=resolved_assessment_type,
             mode=AttemptMode.SECTION,
             status__in=[AttemptStatus.CREATED, AttemptStatus.IN_PROGRESS],
             sections__section_type=section_type,
@@ -210,12 +236,23 @@ def get_or_create_section_attempt(user: User, section_type: str, difficulty: str
         logger.info("Reusing active section attempt attempt_id=%s user_id=%s section=%s", active_attempt.id, user.id, section_type)
         return active_attempt
 
-    attempt = create_attempt(user, AttemptMode.SECTION, difficulty=difficulty, section_type=section_type)
+    attempt = create_attempt(
+        user,
+        AttemptMode.SECTION,
+        difficulty=difficulty,
+        section_type=section_type,
+        assessment_type=resolved_assessment_type,
+    )
     logger.info("Created new section attempt attempt_id=%s user_id=%s section=%s", attempt.id, user.id, section_type)
     return attempt
 
 
-def serialize_full_test_attempt_for_frontend(attempt: Attempt, section_meta: dict[str, dict[str, str]], instructions: dict[str, str]) -> list[dict[str, Any]]:
+def serialize_full_test_attempt_for_frontend(
+    attempt: Attempt,
+    section_meta: dict[str, dict[str, str]],
+    instructions: dict[str, str],
+    full_test_practice_count: int,
+) -> list[dict[str, Any]]:
     payload = []
     for section in attempt.sections.order_by("order_index"):
         payload.append(
@@ -226,7 +263,7 @@ def serialize_full_test_attempt_for_frontend(attempt: Attempt, section_meta: dic
                 "description": section_meta[section.section_type]["description"],
                 "instruction": instructions[section.section_type],
                 "time_limit_seconds": section.time_limit_seconds,
-                "practice_count": FULL_TEST_PRACTICE_COUNT,
+                "practice_count": full_test_practice_count,
                 "test_count": section.question_count,
             }
         )
@@ -412,8 +449,18 @@ def submit_section_attempt(attempt: Attempt, submitted_answers: list[dict[str, A
     }
 
 
-def record_practice_progress(user: User, section_type: str, solved_increment: int = 1) -> SectionProgress:
-    progress, _ = SectionProgress.objects.get_or_create(user=user, section_type=section_type)
+def record_practice_progress(
+    user: User,
+    section_type: str,
+    solved_increment: int = 1,
+    assessment_type: str | None = None,
+) -> SectionProgress:
+    resolved_assessment_type = assessment_type or get_module_assessment_type(section_type)
+    progress, _ = SectionProgress.objects.get_or_create(
+        user=user,
+        assessment_type=resolved_assessment_type,
+        section_type=section_type,
+    )
     progress.practice_questions_solved += max(0, solved_increment)
     progress.save(update_fields=["practice_questions_solved", "updated_at"])
     logger.info(
@@ -425,8 +472,13 @@ def record_practice_progress(user: User, section_type: str, solved_increment: in
     return progress
 
 
-def record_test_progress(user: User, section_type: str, score: float) -> SectionProgress:
-    progress, _ = SectionProgress.objects.get_or_create(user=user, section_type=section_type)
+def record_test_progress(user: User, section_type: str, score: float, assessment_type: str | None = None) -> SectionProgress:
+    resolved_assessment_type = assessment_type or get_module_assessment_type(section_type)
+    progress, _ = SectionProgress.objects.get_or_create(
+        user=user,
+        assessment_type=resolved_assessment_type,
+        section_type=section_type,
+    )
     progress.tests_taken += 1
     progress.last_test_score = score
     progress.save(update_fields=["tests_taken", "last_test_score", "updated_at"])
@@ -588,6 +640,17 @@ def _serialize_generated_question_for_player(question: dict[str, Any], include_c
                 "instruction": prompt.get("instruction", ""),
                 "letter_pairs": prompt.get("letter_pairs", []),
                 "question_text": "How many pairs show the same image?",
+            }
+        )
+        return preview
+
+    if section_type in {SectionType.CCAT_NUMERICAL, SectionType.CCAT_VERBAL, SectionType.CCAT_SPATIAL}:
+        preview.update(
+            {
+                "context_kind": "generic",
+                "instruction": prompt.get("instruction", ""),
+                "question_text": prompt.get("question", prompt.get("instruction", "Choose one answer.")),
+                "reveal_mode": "question_only",
             }
         )
         return preview

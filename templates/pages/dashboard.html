@@ -2,6 +2,8 @@
 
 {% block content %}
 {{ chart_data|json_script:"dashboard-chart-data" }}
+{{ section_tabs|json_script:"dashboard-section-tabs" }}
+{{ assessment_estimates|json_script:"dashboard-assessment-estimates" }}
 
 <section class="content-section">
     <h1 class="section-title">Progress</h1>
@@ -9,157 +11,208 @@
         <div class="notice">{{ expired_attempt_count }} stale test{{ expired_attempt_count|pluralize }} auto-completed after crossing the 2 hour limit.</div>
     {% endif %}
 
-    <article class="card dashboard-chart-card">
-        <div class="dashboard-chart-tabs" role="tablist">
-            <button class="dashboard-tab is-active" role="tab" data-chart-tab="full_test">Full test</button>
-            {% for tab in section_tabs %}
-                <button class="dashboard-tab" role="tab" data-chart-tab="{{ tab.key }}">{{ tab.title }}</button>
+    <div class="dashboard-selector" data-dashboard-selector>
+        <p class="section-copy">Choose the assessment you want to review first.</p>
+        <div class="dashboard-assessment-cards">
+            {% for assessment in assessment_cards %}
+                <button
+                    type="button"
+                    class="card dashboard-assessment-card"
+                    data-assessment-card="{{ assessment.key }}"
+                >
+                    <span class="eyebrow">Assessment</span>
+                    <h2>{{ assessment.title }}</h2>
+                    <p class="muted">{{ assessment.description }}</p>
+                    <span class="dashboard-assessment-meta">{{ assessment.module_count }} modules</span>
+                </button>
             {% endfor %}
         </div>
-        <div class="dashboard-chart-wrap">
-            <canvas id="score-chart" height="260"></canvas>
-            <p class="dashboard-chart-empty muted" hidden>No completed attempts yet for this selection.</p>
-        </div>
-    </article>
 
-    <div class="dashboard-grid">
-        {% if active_attempt_rows %}
-        <article class="card dashboard-span-2">
-            <h2>Active tests</h2>
-            <table class="table dashboard-table-wide dashboard-table-roomy">
-                <thead>
-                    <tr>
-                        <th>Attempt</th>
-                        <th>Mode</th>
-                        <th>Section</th>
-                        <th>Status</th>
-                        <th>Started</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in active_attempt_rows %}
-                        <tr>
-                            <td>#{{ row.attempt_id }}</td>
-                            <td>{{ row.mode_label }}</td>
-                            <td>{{ row.section_title }}</td>
-                            <td>{{ row.status_label }}</td>
-                            <td>{{ row.started_at|date:"d M Y H:i" }}</td>
-                            <td>
-                                <div class="inline-actions">
-                                    {% if row.continue_url %}
-                                        <a href="{{ row.continue_url }}" class="button-secondary button-small">Continue</a>
-                                    {% endif %}
-                                    <form method="post" action="{{ row.end_url }}">
-                                        {% csrf_token %}
-                                        <button type="submit" class="button-secondary button-small">End test</button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <p class="dashboard-selection-empty muted" data-dashboard-empty-state>Select one assessment card to open its dashboard.</p>
+    </div>
+
+    <div class="dashboard-content" data-dashboard-content hidden>
+        <article class="card dashboard-iq-card">
+            <div>
+                <span class="eyebrow">Estimated cognitive profile</span>
+                <h2 data-estimate-range>-</h2>
+                <p class="muted" data-estimate-band>Complete a test to unlock an estimated range.</p>
+            </div>
+            <div class="dashboard-iq-metrics">
+                <div>
+                    <span class="dashboard-iq-label">Percentile</span>
+                    <strong data-estimate-percentile>No estimate yet</strong>
+                </div>
+                <div>
+                    <span class="dashboard-iq-label">Based on</span>
+                    <strong data-estimate-based-on>No completed attempts yet</strong>
+                </div>
+            </div>
         </article>
-        {% endif %}
 
-        <article class="card dashboard-span-2">
-            <h2>Recent attempts</h2>
-            <table class="table dashboard-table-wide dashboard-table-roomy">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Mode</th>
+        <article class="card dashboard-chart-card">
+            <div class="dashboard-chart-head">
+                <div class="dashboard-chart-tabs" role="tablist"></div>
+                <div class="dashboard-chart-metrics" role="tablist" aria-label="Chart metric">
+                    <button type="button" class="dashboard-metric-tab is-active" data-chart-metric="score">Score</button>
+                    <button type="button" class="dashboard-metric-tab" data-chart-metric="percentile">Estimated percentile</button>
+                </div>
+            </div>
+            <div class="dashboard-chart-wrap">
+                <canvas id="score-chart" height="260"></canvas>
+                <p class="dashboard-chart-empty muted" hidden>No completed attempts yet for this selection.</p>
+            </div>
+        </article>
+
+        <div class="dashboard-grid">
+            {% if active_attempt_rows %}
+            <article class="card dashboard-span-2">
+                <h2>Active tests</h2>
+                <table class="table dashboard-table-wide dashboard-table-roomy">
+                    <thead>
+                        <tr>
+                            <th>Attempt</th>
+                            <th>Assessment</th>
+                            <th>Mode</th>
+                            <th>Section</th>
+                            <th>Status</th>
+                            <th>Started</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in active_attempt_rows %}
+                            <tr data-assessment-row="{{ row.assessment_key }}">
+                                <td>#{{ row.attempt_id }}</td>
+                                <td>{{ row.assessment_title }}</td>
+                                <td>{{ row.mode_label }}</td>
+                                <td>{{ row.section_title }}</td>
+                                <td>{{ row.status_label }}</td>
+                                <td>{{ row.started_at|date:"d M Y H:i" }}</td>
+                                <td>
+                                    <div class="inline-actions">
+                                        {% if row.continue_url %}
+                                            <a href="{{ row.continue_url }}" class="button-secondary button-small">Continue</a>
+                                        {% endif %}
+                                        <form method="post" action="{{ row.end_url }}">
+                                            {% csrf_token %}
+                                            <button type="submit" class="button-secondary button-small">End test</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </article>
+            {% endif %}
+
+            <article class="card dashboard-span-2">
+                <h2>Recent attempts</h2>
+                <table class="table dashboard-table-wide dashboard-table-roomy">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Assessment</th>
+                            <th>Mode</th>
                         <th>Section</th>
                         <th>Status</th>
                         <th>Score</th>
+                        <th>Estimate</th>
                         <th>Started</th>
                         <th>Completed</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for attempt in attempts %}
-                        <tr>
-                            <td>#{{ attempt.attempt_id }}</td>
-                            <td>{{ attempt.mode_label }}</td>
-                            <td>{{ attempt.section_title }}</td>
-                            <td>{{ attempt.status_label }}</td>
-                            <td>{{ attempt.score }}</td>
-                            <td>{{ attempt.started_at|date:"d M Y H:i" }}</td>
-                            <td>{% if attempt.completed_at %}{{ attempt.completed_at|date:"d M Y H:i" }}{% else %}-{% endif %}</td>
-                        </tr>
-                    {% empty %}
-                        <tr>
-                            <td colspan="7">No attempts yet.</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </article>
+                        {% for attempt in attempts %}
+                            <tr data-assessment-row="{{ attempt.assessment_key }}">
+                                <td>#{{ attempt.attempt_id }}</td>
+                                <td>{{ attempt.assessment_title }}</td>
+                                <td>{{ attempt.mode_label }}</td>
+                                <td>{{ attempt.section_title }}</td>
+                                <td>{{ attempt.status_label }}</td>
+                                <td>{{ attempt.score }}</td>
+                                <td>{{ attempt.estimate_percentile_label }} · {{ attempt.estimate_band }}</td>
+                                <td>{{ attempt.started_at|date:"d M Y H:i" }}</td>
+                                <td>{% if attempt.completed_at %}{{ attempt.completed_at|date:"d M Y H:i" }}{% else %}-{% endif %}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="9">No attempts yet.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </article>
 
-        <article class="card dashboard-span-2">
-            <h2>Full test scores</h2>
-            <table class="table dashboard-table-wide dashboard-table-roomy">
-                <thead>
-                    <tr>
-                        <th>Attempt</th>
+            <article class="card dashboard-span-2">
+                <h2>Full test scores</h2>
+                <table class="table dashboard-table-wide dashboard-table-roomy">
+                    <thead>
+                        <tr>
+                            <th>Attempt</th>
+                        <th>Assessment</th>
                         <th>Completed</th>
                         <th>Total</th>
-                        {% for label in section_score_headers %}
-                            <th>{{ label }}</th>
-                        {% endfor %}
+                        <th>Estimate</th>
+                        <th>Module scores</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in full_test_rows %}
-                        <tr>
-                            <td>#{{ row.attempt_id }}</td>
-                            <td>{% if row.completed_at %}{{ row.completed_at|date:"d M Y H:i" }}{% else %}in progress{% endif %}</td>
-                            <td>{{ row.overall_score }}</td>
-                            {% for score in row.ordered_section_scores %}
-                                <td>{{ score }}</td>
-                            {% endfor %}
-                        </tr>
-                    {% empty %}
-                        <tr>
-                            <td colspan="8">No completed full tests yet.</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </article>
+                        {% for row in full_test_rows %}
+                            <tr data-assessment-row="{{ row.assessment_key }}">
+                                <td>#{{ row.attempt_id }}</td>
+                                <td>{{ row.assessment_title }}</td>
+                                <td>{% if row.completed_at %}{{ row.completed_at|date:"d M Y H:i" }}{% else %}in progress{% endif %}</td>
+                                <td>{{ row.overall_score }}</td>
+                                <td>{{ row.estimate_percentile_label }} · {{ row.estimate_iq_range }}</td>
+                                <td>{{ row.module_score_summary }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="6">No completed full tests yet.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </article>
 
-        <article class="card dashboard-span-2">
-            <h2>Section-wise test scores</h2>
-            <table class="table dashboard-table-wide dashboard-table-roomy">
-                <thead>
-                    <tr>
-                        <th>Attempt</th>
-                        <th>Section</th>
+            <article class="card dashboard-span-2">
+                <h2>Section-wise test scores</h2>
+                <table class="table dashboard-table-wide dashboard-table-roomy">
+                    <thead>
+                        <tr>
+                            <th>Attempt</th>
+                            <th>Assessment</th>
+                            <th>Section</th>
                         <th>Completed</th>
                         <th>Score</th>
+                        <th>Estimate</th>
                         <th>Question count</th>
                         <th>Time limit</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in section_score_rows %}
-                        <tr>
-                            <td>#{{ row.attempt_id }}</td>
-                            <td>{{ row.section_title }}</td>
-                            <td>{% if row.completed_at %}{{ row.completed_at|date:"d M Y H:i" }}{% else %}-{% endif %}</td>
-                            <td>{{ row.score }}</td>
-                            <td>{{ row.question_count }}</td>
-                            <td>{{ row.time_limit_seconds }} sec</td>
-                        </tr>
-                    {% empty %}
-                        <tr>
-                            <td colspan="6">No completed section-wise tests yet.</td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </article>
+                        {% for row in section_score_rows %}
+                            <tr data-assessment-row="{{ row.assessment_key }}">
+                                <td>#{{ row.attempt_id }}</td>
+                                <td>{{ row.assessment_title }}</td>
+                                <td>{{ row.section_title }}</td>
+                                <td>{% if row.completed_at %}{{ row.completed_at|date:"d M Y H:i" }}{% else %}-{% endif %}</td>
+                                <td>{{ row.score }}</td>
+                                <td>{{ row.estimate_percentile_label }} · {{ row.estimate_iq_range }}</td>
+                                <td>{{ row.question_count }}</td>
+                                <td>{{ row.time_limit_seconds }} sec</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="8">No completed section-wise tests yet.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </article>
+        </div>
     </div>
 </section>
 {% endblock %}
@@ -169,14 +222,38 @@
 <script>
 (function () {
     const allData = JSON.parse(document.getElementById("dashboard-chart-data").textContent);
+    const sectionTabsByAssessment = JSON.parse(document.getElementById("dashboard-section-tabs").textContent);
+    const assessmentEstimates = JSON.parse(document.getElementById("dashboard-assessment-estimates").textContent);
     const canvas = document.getElementById("score-chart");
     const emptyMsg = document.querySelector(".dashboard-chart-empty");
-    const tabs = document.querySelectorAll(".dashboard-tab");
+    const tabsWrap = document.querySelector(".dashboard-chart-tabs");
+    const metricTabs = document.querySelectorAll("[data-chart-metric]");
+    const assessmentCards = document.querySelectorAll("[data-assessment-card]");
+    const rows = document.querySelectorAll("[data-assessment-row]");
+    const dashboardSelector = document.querySelector("[data-dashboard-selector]");
+    const dashboardContent = document.querySelector("[data-dashboard-content]");
+    const dashboardEmptyState = document.querySelector("[data-dashboard-empty-state]");
+    const estimateRange = document.querySelector("[data-estimate-range]");
+    const estimateBand = document.querySelector("[data-estimate-band]");
+    const estimatePercentile = document.querySelector("[data-estimate-percentile]");
+    const estimateBasedOn = document.querySelector("[data-estimate-based-on]");
 
     let chart = null;
+    let activeAssessment = null;
+    let activeChartTab = "full_test";
+    let activeMetric = "score";
+
+    function updateEstimateCard() {
+        const estimate = assessmentEstimates[activeAssessment] || {};
+        estimateRange.textContent = estimate.iq_range || "-";
+        estimateBand.textContent = estimate.band || "Complete a test to unlock an estimated range.";
+        estimatePercentile.textContent = estimate.percentile_label || "No estimate yet";
+        estimateBasedOn.textContent = estimate.based_on || "No completed attempts yet";
+    }
 
     function renderChart(key) {
-        const points = allData[key] || [];
+        const assessmentData = allData[activeAssessment] || {};
+        const points = assessmentData[key] || [];
         if (points.length === 0) {
             canvas.hidden = true;
             emptyMsg.hidden = false;
@@ -186,8 +263,8 @@
         canvas.hidden = false;
         emptyMsg.hidden = true;
 
-        const labels = points.map(p => p.label);
-        const scores = points.map(p => p.score);
+        const labels = points.map((point) => point.label);
+        const values = points.map((point) => activeMetric === "percentile" ? point.percentile : point.score);
 
         if (chart) { chart.destroy(); }
 
@@ -196,8 +273,8 @@
             data: {
                 labels,
                 datasets: [{
-                    label: "Score",
-                    data: scores,
+                    label: activeMetric === "percentile" ? "Estimated percentile" : "Score",
+                    data: values,
                     borderColor: "#c8a96e",
                     backgroundColor: "rgba(200,169,110,0.12)",
                     pointBackgroundColor: "#c8a96e",
@@ -214,13 +291,17 @@
                     legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            label: ctx => ` Score: ${ctx.parsed.y}`
+                            label: ctx => activeMetric === "percentile"
+                                ? ` Estimated percentile: ${ctx.parsed.y}`
+                                : ` Score: ${ctx.parsed.y}`
                         }
                     }
                 },
                 scales: {
                     y: {
-                        beginAtZero: false,
+                        beginAtZero: activeMetric === "percentile",
+                        suggestedMin: activeMetric === "percentile" ? 1 : undefined,
+                        suggestedMax: activeMetric === "percentile" ? 99 : undefined,
                         grid: { color: "rgba(0,0,0,0.06)" },
                         ticks: { color: "#777" }
                     },
@@ -233,15 +314,79 @@
         });
     }
 
-    tabs.forEach(tab => {
-        tab.addEventListener("click", () => {
-            tabs.forEach(t => t.classList.remove("is-active"));
-            tab.classList.add("is-active");
-            renderChart(tab.dataset.chartTab);
+    function syncMetricTabs() {
+        metricTabs.forEach((tab) => {
+            tab.classList.toggle("is-active", tab.dataset.chartMetric === activeMetric);
+        });
+    }
+
+    function filterRows() {
+        rows.forEach((row) => {
+            row.hidden = row.dataset.assessmentRow !== activeAssessment;
+        });
+    }
+
+    function bindTabClicks() {
+        tabsWrap.querySelectorAll(".dashboard-tab").forEach((tab) => {
+            tab.addEventListener("click", () => {
+                activeChartTab = tab.dataset.chartTab;
+                buildTabs();
+                renderChart(activeChartTab);
+            });
+        });
+    }
+
+    function buildTabs() {
+        const sectionTabs = sectionTabsByAssessment[activeAssessment] || [];
+        tabsWrap.innerHTML = "";
+
+        const fullTestButton = document.createElement("button");
+        fullTestButton.className = `dashboard-tab ${activeChartTab === "full_test" ? "is-active" : ""}`;
+        fullTestButton.type = "button";
+        fullTestButton.setAttribute("role", "tab");
+        fullTestButton.dataset.chartTab = "full_test";
+        fullTestButton.textContent = "Full test";
+        tabsWrap.appendChild(fullTestButton);
+
+        sectionTabs.forEach((tab) => {
+            const button = document.createElement("button");
+            button.className = `dashboard-tab ${activeChartTab === tab.key ? "is-active" : ""}`;
+            button.type = "button";
+            button.setAttribute("role", "tab");
+            button.dataset.chartTab = tab.key;
+            button.textContent = tab.title;
+            tabsWrap.appendChild(button);
+        });
+
+        bindTabClicks();
+    }
+
+    assessmentCards.forEach((card) => {
+        card.addEventListener("click", () => {
+            activeAssessment = card.dataset.assessmentCard;
+            activeChartTab = "full_test";
+            dashboardSelector.hidden = true;
+            dashboardContent.hidden = false;
+            dashboardEmptyState.hidden = true;
+            assessmentCards.forEach((item) => item.classList.remove("is-active"));
+            card.classList.add("is-active");
+            updateEstimateCard();
+            syncMetricTabs();
+            buildTabs();
+            filterRows();
+            renderChart(activeChartTab);
         });
     });
 
-    renderChart("full_test");
+    metricTabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+            activeMetric = tab.dataset.chartMetric;
+            syncMetricTabs();
+            if (activeAssessment) {
+                renderChart(activeChartTab);
+            }
+        });
+    });
 })();
 </script>
 {% endblock %}

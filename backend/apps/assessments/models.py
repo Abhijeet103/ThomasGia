@@ -22,10 +22,14 @@ class SectionType(models.TextChoices):
     NUMBER_SPEED_ACCURACY = "number_speed_accuracy", "Number Speed & Accuracy"
     WORD_MEANING = "word_meaning", "Word Meaning"
     SPATIAL_VISUALIZATION = "spatial_visualization", "Spatial Visualization"
+    CCAT_NUMERICAL = "ccat_numerical", "CCAT Math & Numerical Reasoning"
+    CCAT_VERBAL = "ccat_verbal", "CCAT Verbal Reasoning"
+    CCAT_SPATIAL = "ccat_spatial", "CCAT Spatial & Abstract Reasoning"
 
 
 class Attempt(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="attempts")
+    assessment_type = models.CharField(max_length=24, default="prepgia")
     mode = models.CharField(max_length=24, choices=AttemptMode.choices)
     status = models.CharField(max_length=24, choices=AttemptStatus.choices, default=AttemptStatus.CREATED)
     overall_adjusted_score = models.FloatField(default=0)
@@ -55,6 +59,7 @@ class AttemptAnswer(models.Model):
 
 class SectionProgress(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="section_progress")
+    assessment_type = models.CharField(max_length=24, default="prepgia")
     section_type = models.CharField(max_length=32, choices=SectionType.choices)
     practice_questions_solved = models.PositiveIntegerField(default=0)
     tests_taken = models.PositiveIntegerField(default=0)
@@ -62,7 +67,7 @@ class SectionProgress(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ("user", "section_type")
+        unique_together = ("user", "assessment_type", "section_type")
 
 
 class WordMeaningItem(models.Model):
