@@ -21,7 +21,7 @@ from backend.apps.assessments.config import (
 )
 from prepgia.generators import SECTION_TYPES, generate_question
 
-from .models import Attempt, AttemptAnswer, AttemptMode, AttemptSection, AttemptStatus, SectionProgress, SectionType
+from .models import Attempt, AttemptMode, AttemptSection, AttemptStatus, SectionProgress, SectionType
 
 ACTIVE_ATTEMPT_EXPIRY_SECONDS = 2 * 60 * 60
 _redis_client: Redis | None = None
@@ -96,35 +96,43 @@ def create_attempt(
     )
     for index, section_key in enumerate(section_keys):
         question_target = get_time_limit_seconds(section_key) if mode == AttemptMode.SECTION else 5
-        logger.info(
-            "Generating section attempt payload attempt_id=%s section=%s difficulty=%s question_count=%s",
-            attempt.id,
-            section_key,
-            difficulty,
-            question_target,
-        )
-        payloads: list[dict[str, Any]] = []
-        for question_index in range(question_target):
-            seed = f"{attempt.id}:{section_key}:{difficulty}:{question_index}"
-            generated = generate_question(section_key, difficulty, seed)
-            payloads.append(asdict(generated))
-
-        AttemptSection.objects.create(
+        section_record = AttemptSection.objects.create(
             attempt=attempt,
             section_type=section_key,
             order_index=index,
             difficulty=difficulty,
             time_limit_seconds=get_time_limit_seconds(section_key),
-            question_count=len(payloads),
-            question_payload=payloads,
+            question_count=question_target,
+            question_payload={},
         )
-        logger.info(
-            "Saved section attempt payload to DB attempt_id=%s section=%s order_index=%s question_count=%s",
-            attempt.id,
-            section_key,
-            index,
-            len(payloads),
-        )
+        if mode == AttemptMode.SECTION:
+            logger.info(
+                "Generating section attempt payload attempt_id=%s section=%s difficulty=%s question_count=%s",
+                attempt.id,
+                section_key,
+                difficulty,
+                question_target,
+            )
+            payloads = _build_question_batch(attempt.id, section_key, "test", question_target, difficulty)
+            _save_section_test_session(
+                attempt.id,
+                {
+                    "attempt_id": attempt.id,
+                    "user_id": user.id,
+                    "section_id": section_record.id,
+                    "section_type": section_key,
+                    "questions": payloads,
+                    "submitted_answers": [],
+                    "created_at": timezone.now().isoformat(),
+                },
+            )
+            logger.info(
+                "Saved section attempt payload to Redis attempt_id=%s section=%s order_index=%s question_count=%s",
+                attempt.id,
+                section_key,
+                index,
+                len(payloads),
+            )
 
     logger.info("Attempt created successfully attempt_id=%s user_id=%s mode=%s", attempt.id, user.id, mode)
     return attempt
@@ -190,6 +198,7 @@ def get_or_create_full_test_attempt(user: User, assessment_type: str = ASSESSMEN
                 "section_type": section_key,
                 "practice_questions": practice_questions,
                 "test_questions": test_questions,
+                "submitted_answers": [],
             }
         )
 
@@ -233,6 +242,34 @@ def get_or_create_section_attempt(
         .first()
     )
     if active_attempt is not None:
+        if not _section_test_session_exists(active_attempt.id):
+            logger.info(
+                "Redis section session missing for active attempt; regenerating attempt_id=%s user_id=%s section=%s",
+                active_attempt.id,
+                user.id,
+                section_type,
+            )
+            section = active_attempt.sections.order_by("order_index").first()
+            if section is not None:
+                payloads = _build_question_batch(
+                    active_attempt.id,
+                    section_type,
+                    "test",
+                    section.question_count,
+                    section.difficulty,
+                )
+                _save_section_test_session(
+                    active_attempt.id,
+                    {
+                        "attempt_id": active_attempt.id,
+                        "user_id": user.id,
+                        "section_id": section.id,
+                        "section_type": section_type,
+                        "questions": payloads,
+                        "submitted_answers": [],
+                        "created_at": timezone.now().isoformat(),
+                    },
+                )
         logger.info("Reusing active section attempt attempt_id=%s user_id=%s section=%s", active_attempt.id, user.id, section_type)
         return active_attempt
 
@@ -298,6 +335,21 @@ def get_full_test_question(attempt: Attempt, section_index: int, phase: str, que
     return _serialize_generated_question_for_player(question, include_correct_answer=phase == "practice")
 
 
+def get_section_test_previews(attempt: Attempt) -> list[dict[str, Any]]:
+    session = _load_section_test_session(attempt.id)
+    return [
+        _serialize_generated_question_for_player(question, include_correct_answer=False)
+        for question in session.get("questions", [])
+    ]
+
+
+def save_attempt_progress(attempt: Attempt, payload: dict[str, Any]) -> None:
+    if attempt.mode == AttemptMode.FULL_TEST:
+        _save_full_test_progress(attempt.id, payload.get("sections", []))
+        return
+    _save_section_test_progress(attempt.id, payload.get("answers", []))
+
+
 def submit_full_test_attempt(attempt: Attempt, submitted_answers: list[dict[str, Any]]) -> dict[str, Any]:
     if attempt.status == AttemptStatus.COMPLETED:
         logger.info("Full test submission reused completed result attempt_id=%s user_id=%s", attempt.id, attempt.user_id)
@@ -316,14 +368,13 @@ def submit_full_test_attempt(attempt: Attempt, submitted_answers: list[dict[str,
         attempt.user_id,
         len(submitted_answers),
     )
+    if submitted_answers:
+        _save_full_test_progress(attempt.id, submitted_answers)
     session = _load_full_test_session(attempt.id)
     session_sections = {
         item["section_id"]: item
         for item in session.get("sections", [])
     }
-    submitted_by_section = {item["section_id"]: item.get("answers", []) for item in submitted_answers}
-    AttemptAnswer.objects.filter(attempt_section__attempt=attempt).delete()
-    logger.info("Cleared previous saved answers for attempt_id=%s", attempt.id)
 
     total_score = 0
     section_scores = []
@@ -332,40 +383,32 @@ def submit_full_test_attempt(attempt: Attempt, submitted_answers: list[dict[str,
         if session_section is None:
             raise FullTestSessionError("Active test session is missing section data.")
         expected_questions = session_section.get("test_questions", [])
-        answers_by_index = {
-            item["question_index"]: str(item.get("selected_option", ""))
-            for item in submitted_by_section.get(section.id, [])
-        }
-
-        section_score = 0
-        for question_index, question in enumerate(expected_questions):
-            correct_answer = str(question.get("correct_answer", ""))
-            selected_answer = answers_by_index.get(question_index, "")
-            is_correct = selected_answer == correct_answer
-            if is_correct:
-                section_score += 1
-            AttemptAnswer.objects.create(
-                attempt_section=section,
-                question_index=question_index,
-                user_answer={"selected_option": selected_answer},
-                is_correct=is_correct,
-                penalty_applied=0,
-            )
-
-        section.adjusted_score = section_score
+        summary = _calculate_question_summary(expected_questions, session_section.get("submitted_answers", []))
+        section.adjusted_score = summary["score"]
+        section.correct_answers_count = summary["correct_count"]
+        section.incorrect_answers_count = summary["incorrect_count"]
         section.question_payload = {}
-        section.save(update_fields=["adjusted_score", "question_payload"])
+        section.save(update_fields=["adjusted_score", "correct_answers_count", "incorrect_answers_count", "question_payload"])
         logger.info(
-            "Saved section score to DB attempt_id=%s section_id=%s section=%s score=%s question_count=%s",
+            "Saved section summary to DB attempt_id=%s section_id=%s section=%s score=%s correct=%s incorrect=%s question_count=%s",
             attempt.id,
             section.id,
             section.section_type,
-            section_score,
+            summary["score"],
+            summary["correct_count"],
+            summary["incorrect_count"],
             len(expected_questions),
         )
-        section_scores.append({"section_type": section.section_type, "score": section_score})
-        total_score += section_score
-        record_test_progress(attempt.user, section.section_type, section_score)
+        section_scores.append(
+            {
+                "section_type": section.section_type,
+                "score": summary["score"],
+                "correct_count": summary["correct_count"],
+                "incorrect_count": summary["incorrect_count"],
+            }
+        )
+        total_score += summary["score"]
+        record_test_progress(attempt.user, section.section_type, summary["score"])
 
     attempt.overall_adjusted_score = total_score
     attempt.status = AttemptStatus.COMPLETED
@@ -399,6 +442,9 @@ def submit_section_attempt(attempt: Attempt, submitted_answers: list[dict[str, A
     section = attempt.sections.order_by("order_index").first()
     if section is None:
         raise FullTestSessionError("Section attempt is missing section data.")
+    if submitted_answers:
+        _save_section_test_progress(attempt.id, submitted_answers)
+    session = _load_section_test_session(attempt.id)
 
     logger.info(
         "Submitting section attempt attempt_id=%s user_id=%s section=%s submitted_answer_count=%s",
@@ -407,45 +453,33 @@ def submit_section_attempt(attempt: Attempt, submitted_answers: list[dict[str, A
         section.section_type,
         len(submitted_answers),
     )
-    AttemptAnswer.objects.filter(attempt_section=section).delete()
-    answers_by_index = {
-        int(item["question_index"]): str(item.get("selected_option", ""))
-        for item in submitted_answers
-    }
-
-    score = 0
-    for question_index, question in enumerate(section.question_payload or []):
-        correct_answer = str(question.get("correct_answer", {}).get("answer", ""))
-        selected_answer = answers_by_index.get(question_index, "")
-        is_correct = selected_answer == correct_answer
-        if is_correct:
-            score += 1
-        AttemptAnswer.objects.create(
-            attempt_section=section,
-            question_index=question_index,
-            user_answer={"selected_option": selected_answer},
-            is_correct=is_correct,
-            penalty_applied=0,
-        )
-
-    section.adjusted_score = score
-    section.save(update_fields=["adjusted_score"])
-    attempt.overall_adjusted_score = score
+    summary = _calculate_question_summary(session.get("questions", []), session.get("submitted_answers", []))
+    section.adjusted_score = summary["score"]
+    section.correct_answers_count = summary["correct_count"]
+    section.incorrect_answers_count = summary["incorrect_count"]
+    section.question_payload = {}
+    section.save(update_fields=["adjusted_score", "correct_answers_count", "incorrect_answers_count", "question_payload"])
+    attempt.overall_adjusted_score = summary["score"]
     attempt.status = AttemptStatus.COMPLETED
     attempt.completed_at = timezone.now()
     attempt.save(update_fields=["overall_adjusted_score", "status", "completed_at"])
-    record_test_progress(attempt.user, section.section_type, score)
+    record_test_progress(attempt.user, section.section_type, summary["score"])
     logger.info(
-        "Saved section attempt result attempt_id=%s user_id=%s score=%s question_count=%s",
+        "Saved section attempt summary attempt_id=%s user_id=%s score=%s correct=%s incorrect=%s question_count=%s",
         attempt.id,
         attempt.user_id,
-        score,
-        len(section.question_payload or []),
+        summary["score"],
+        summary["correct_count"],
+        summary["incorrect_count"],
+        len(session.get("questions", [])),
     )
+    _delete_section_test_session(attempt.id)
     return {
         "attempt_id": attempt.id,
-        "overall_score": score,
-        "section_score": score,
+        "overall_score": summary["score"],
+        "section_score": summary["score"],
+        "correct_count": summary["correct_count"],
+        "incorrect_count": summary["incorrect_count"],
     }
 
 
@@ -503,7 +537,7 @@ def expire_stale_attempts(user: User | None = None) -> int:
 
     expired_count = 0
     for attempt in attempts:
-        complete_attempt_with_zero(attempt, reason="stale_timeout")
+        finalize_attempt_from_saved_progress(attempt, reason="stale_timeout")
         expired_count += 1
 
     if expired_count:
@@ -525,9 +559,15 @@ def complete_attempt_with_zero(attempt: Attempt, reason: str = "manual_end") -> 
     )
     for section in attempt.sections.all():
         section.adjusted_score = 0
+        section.correct_answers_count = 0
+        section.incorrect_answers_count = 0
         if attempt.mode == AttemptMode.FULL_TEST:
             section.question_payload = {}
-        section.save(update_fields=["adjusted_score", "question_payload"] if attempt.mode == AttemptMode.FULL_TEST else ["adjusted_score"])
+        section.save(
+            update_fields=["adjusted_score", "correct_answers_count", "incorrect_answers_count", "question_payload"]
+            if attempt.mode == AttemptMode.FULL_TEST
+            else ["adjusted_score", "correct_answers_count", "incorrect_answers_count"]
+        )
 
     attempt.overall_adjusted_score = 0
     attempt.status = AttemptStatus.COMPLETED
@@ -536,8 +576,25 @@ def complete_attempt_with_zero(attempt: Attempt, reason: str = "manual_end") -> 
 
     if attempt.mode == AttemptMode.FULL_TEST:
         _delete_full_test_session(attempt.id)
+    elif attempt.mode == AttemptMode.SECTION:
+        _delete_section_test_session(attempt.id)
 
     return attempt
+
+
+def finalize_attempt_from_saved_progress(attempt: Attempt, reason: str = "manual_end") -> Attempt:
+    if attempt.status == AttemptStatus.COMPLETED:
+        return attempt
+    logger.info("Finalizing attempt from saved progress attempt_id=%s mode=%s reason=%s", attempt.id, attempt.mode, reason)
+    try:
+        if attempt.mode == AttemptMode.FULL_TEST:
+            submit_full_test_attempt(attempt, [])
+        else:
+            submit_section_attempt(attempt, [])
+        return attempt
+    except FullTestSessionError:
+        logger.warning("Saved progress unavailable; completing attempt with zero attempt_id=%s reason=%s", attempt.id, reason)
+        return complete_attempt_with_zero(attempt, reason=reason)
 
 
 def _build_question_batch(attempt_id: int, section_type: str, phase: str, count: int, difficulty: str) -> list[dict[str, Any]]:
@@ -658,6 +715,46 @@ def _serialize_generated_question_for_player(question: dict[str, Any], include_c
     return preview
 
 
+def _normalize_answer_rows(answer_rows: list[dict[str, Any]]) -> list[dict[str, str]]:
+    normalized: dict[int, dict[str, str]] = {}
+    for item in answer_rows or []:
+        try:
+            question_index = int(item.get("question_index", -1))
+        except (TypeError, ValueError):
+            continue
+        if question_index < 0:
+            continue
+        normalized[question_index] = {
+            "question_index": question_index,
+            "selected_option": str(item.get("selected_option", "")),
+        }
+    return list(normalized.values())
+
+
+def _calculate_question_summary(question_set: list[dict[str, Any]], answer_rows: list[dict[str, Any]]) -> dict[str, int]:
+    answers_by_index = {item["question_index"]: item["selected_option"] for item in _normalize_answer_rows(answer_rows)}
+    correct_count = 0
+    incorrect_count = 0
+    for question_index, question in enumerate(question_set):
+        selected_answer = answers_by_index.get(question_index)
+        if selected_answer is None:
+            continue
+        correct_answer_raw = question.get("correct_answer", "")
+        if isinstance(correct_answer_raw, dict):
+            correct_answer = str(correct_answer_raw.get("answer", ""))
+        else:
+            correct_answer = str(correct_answer_raw)
+        if selected_answer == correct_answer:
+            correct_count += 1
+        else:
+            incorrect_count += 1
+    return {
+        "score": correct_count,
+        "correct_count": correct_count,
+        "incorrect_count": incorrect_count,
+    }
+
+
 def _get_redis_client() -> Redis:
     global _redis_client
     if _redis_client is None:
@@ -668,6 +765,10 @@ def _get_redis_client() -> Redis:
 
 def _full_test_session_key(attempt_id: int) -> str:
     return f"prepgia:attempt:{attempt_id}:full-test"
+
+
+def _section_test_session_key(attempt_id: int) -> str:
+    return f"prepgia:attempt:{attempt_id}:section-test"
 
 
 def _full_test_session_exists(attempt_id: int) -> bool:
@@ -696,6 +797,43 @@ def _save_full_test_session(attempt_id: int, payload: dict[str, Any]) -> None:
         raise FullTestSessionError("Could not save the active full-test session to Redis.") from exc
 
 
+def _save_full_test_progress(attempt_id: int, sections_payload: list[dict[str, Any]]) -> None:
+    session = _load_full_test_session(attempt_id)
+    answers_by_section = {
+        int(item.get("section_id")): _normalize_answer_rows(item.get("answers", []))
+        for item in sections_payload or []
+        if item.get("section_id") is not None
+    }
+    for section in session.get("sections", []):
+        section_id = int(section.get("section_id"))
+        if section_id in answers_by_section:
+            section["submitted_answers"] = answers_by_section[section_id]
+    _save_full_test_session(attempt_id, session)
+
+
+def _save_section_test_session(attempt_id: int, payload: dict[str, Any]) -> None:
+    try:
+        _get_redis_client().setex(
+            _section_test_session_key(attempt_id),
+            settings.FULL_TEST_REDIS_TTL_SECONDS,
+            json.dumps(payload),
+        )
+        logger.info(
+            "Saved section test session to Redis attempt_id=%s ttl_seconds=%s question_count=%s",
+            attempt_id,
+            settings.FULL_TEST_REDIS_TTL_SECONDS,
+            len(payload.get("questions", [])),
+        )
+    except RedisError as exc:
+        raise FullTestSessionError("Could not save the active section-test session to Redis.") from exc
+
+
+def _save_section_test_progress(attempt_id: int, answers_payload: list[dict[str, Any]]) -> None:
+    session = _load_section_test_session(attempt_id)
+    session["submitted_answers"] = _normalize_answer_rows(answers_payload)
+    _save_section_test_session(attempt_id, session)
+
+
 def _load_full_test_session(attempt_id: int) -> dict[str, Any]:
     try:
         client = _get_redis_client()
@@ -715,9 +853,45 @@ def _load_full_test_session(attempt_id: int) -> dict[str, Any]:
     return json.loads(raw)
 
 
+def _load_section_test_session(attempt_id: int) -> dict[str, Any]:
+    try:
+        client = _get_redis_client()
+        key = _section_test_session_key(attempt_id)
+        raw = client.get(key)
+        if raw:
+            client.expire(key, settings.FULL_TEST_REDIS_TTL_SECONDS)
+            logger.info(
+                "Loaded section test session from Redis attempt_id=%s ttl_refreshed_to=%s",
+                attempt_id,
+                settings.FULL_TEST_REDIS_TTL_SECONDS,
+            )
+    except RedisError as exc:
+        raise FullTestSessionError("Redis is unavailable for active section-test sessions.") from exc
+    if not raw:
+        raise FullTestSessionError("This section test session expired or could not be found.")
+    return json.loads(raw)
+
+
 def _delete_full_test_session(attempt_id: int) -> None:
     try:
         deleted = _get_redis_client().delete(_full_test_session_key(attempt_id))
         logger.info("Deleted full test session from Redis attempt_id=%s deleted=%s", attempt_id, bool(deleted))
     except RedisError:
         pass
+
+
+def _delete_section_test_session(attempt_id: int) -> None:
+    try:
+        deleted = _get_redis_client().delete(_section_test_session_key(attempt_id))
+        logger.info("Deleted section test session from Redis attempt_id=%s deleted=%s", attempt_id, bool(deleted))
+    except RedisError:
+        pass
+
+
+def _section_test_session_exists(attempt_id: int) -> bool:
+    try:
+        exists = bool(_get_redis_client().exists(_section_test_session_key(attempt_id)))
+        logger.info("Checked Redis section session existence attempt_id=%s exists=%s", attempt_id, exists)
+        return exists
+    except RedisError as exc:
+        raise FullTestSessionError("Redis is unavailable for active section-test sessions.") from exc

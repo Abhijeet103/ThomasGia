@@ -80,6 +80,24 @@ function initSectionPlayer() {
   const practiceStartButton = player.querySelector("[data-test-practice-start]");
   const endTestButton = player.querySelector("[data-test-end]");
 
+  const persistTestProgress = async () => {
+    if (mode !== "test" || !player.dataset.progressUrl) {
+      return;
+    }
+    try {
+      await fetch(player.dataset.progressUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": getCookie("csrftoken"),
+        },
+        body: JSON.stringify({ answers: submittedAnswers }),
+      });
+    } catch (error) {
+      // Progress save should not block the test flow.
+    }
+  };
+
   const syncFullscreenTestUI = () => {
     const isFullscreenTestActive =
       mode === "test" &&
@@ -297,6 +315,7 @@ function initSectionPlayer() {
             } else {
               submittedAnswers.push(answerRow);
             }
+            persistTestProgress();
             currentIndex += 1;
             renderQuestion();
           }
@@ -364,6 +383,19 @@ function initSectionPlayer() {
   updateProgress();
   updateTimer();
   showStage(introStage);
+
+  window.addEventListener("beforeunload", () => {
+    if (mode !== "test" || !player.dataset.progressUrl || finished) return;
+    fetch(player.dataset.progressUrl, {
+      method: "POST",
+      keepalive: true,
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken"),
+      },
+      body: JSON.stringify({ answers: submittedAnswers }),
+    });
+  });
 }
 
 function formatSeconds(totalSeconds) {
@@ -403,6 +435,24 @@ function initFullTestPlayer() {
   const fullscreenStartButton = player.querySelector("[data-full-fullscreen-start]");
   const nextPhaseButton = player.querySelector("[data-full-next-phase]");
   const endTestButton = player.querySelector("[data-full-end-test]");
+
+  const persistFullTestProgress = async () => {
+    if (!player.dataset.progressUrl) {
+      return;
+    }
+    try {
+      await fetch(player.dataset.progressUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": getCookie("csrftoken"),
+        },
+        body: JSON.stringify({ sections: collectedTestAnswers }),
+      });
+    } catch (error) {
+      // Progress save should not block the full test flow.
+    }
+  };
 
   const updateEndTestButton = () => {
     if (!endTestButton) return;
@@ -555,6 +605,7 @@ function initFullTestPlayer() {
               collectedTestAnswers.push({ section_id: sectionId, answers: [answerRow] });
             }
 
+            persistFullTestProgress();
             questionIndex += 1;
             renderQuestion();
           });
@@ -738,8 +789,8 @@ function initFullTestPlayer() {
   });
 
   window.addEventListener("beforeunload", () => {
-    if (isSubmitting || !player.dataset.submitUrl || phase === "complete") return;
-    fetch(player.dataset.submitUrl, {
+    if (isSubmitting || !player.dataset.progressUrl || phase === "complete") return;
+    fetch(player.dataset.progressUrl, {
       method: "POST",
       keepalive: true,
       headers: {

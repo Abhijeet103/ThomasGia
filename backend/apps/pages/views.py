@@ -31,6 +31,7 @@ from backend.apps.assessments.services import (
     expire_stale_attempts,
     get_or_create_full_test_attempt,
     get_or_create_section_attempt,
+    get_section_test_previews,
     serialize_full_test_attempt_for_frontend,
 )
 from prepgia.generators import generate_question
@@ -318,11 +319,14 @@ class SectionDetailPageView(TemplateView):
             try:
                 attempt = get_or_create_section_attempt(self.request.user, section_type, assessment_type=assessment_type)
                 section_attempt_id = attempt.id
-                attempt_section = next(iter(attempt.sections.all()), None)
-                previews = [_build_generated_preview(item) for item in (attempt_section.question_payload if attempt_section else [])]
+                previews = get_section_test_previews(attempt)
                 section_submit_url = f"/api/tests/section-tests/{section_attempt_id}/submit/" if section_attempt_id else ""
             except PermissionError as exc:
                 section_access_error = str(exc)
+                previews = []
+            except FullTestSessionError:
+                logger.exception("Section test setup failed because the active Redis-backed session was unavailable.")
+                section_access_error = "Section test is temporarily unavailable. Please try again in a moment."
                 previews = []
         else:
             previews = _build_section_questions(section_type, mode, user=self.request.user)

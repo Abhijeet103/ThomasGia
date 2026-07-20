@@ -16,11 +16,12 @@ from .services import (
     SECTION_TIME_LIMITS,
     FullTestSessionError,
     can_start_attempt,
-    complete_attempt_with_zero,
     create_attempt,
     expire_stale_attempts,
+    finalize_attempt_from_saved_progress,
     get_full_test_question,
     record_practice_progress,
+    save_attempt_progress,
     submit_section_attempt,
     submit_full_test_attempt,
 )
@@ -168,10 +169,28 @@ class AttemptEndView(LoginRequiredMixin, View):
             return redirect("pages:dashboard")
 
         if attempt.status in {AttemptStatus.CREATED, AttemptStatus.IN_PROGRESS}:
-            complete_attempt_with_zero(attempt, reason="manual_end")
+            finalize_attempt_from_saved_progress(attempt, reason="manual_end")
             logger.info("Attempt manually ended attempt_id=%s user_id=%s", attempt.id, request.user.id)
 
         return redirect("pages:dashboard")
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AttemptProgressSaveView(LoginRequiredMixin, View):
+    def post(self, request, attempt_id: int):
+        attempt = Attempt.objects.filter(id=attempt_id, user=request.user).prefetch_related("sections").first()
+        if attempt is None:
+            return JsonResponse({"detail": "Attempt not found."}, status=404)
+        if attempt.status == AttemptStatus.COMPLETED:
+            return JsonResponse({"detail": "Attempt already completed."}, status=409)
+
+        payload = json.loads(request.body or "{}")
+        try:
+            save_attempt_progress(attempt, payload)
+        except FullTestSessionError:
+            logger.exception("Attempt progress save failed because the Redis-backed session was unavailable.")
+            return JsonResponse({"detail": "Active test session is temporarily unavailable."}, status=503)
+        return JsonResponse({"saved": True})
 
 
 @method_decorator(csrf_exempt, name="dispatch")

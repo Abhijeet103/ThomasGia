@@ -45,6 +45,8 @@ class AttemptSection(models.Model):
     time_limit_seconds = models.PositiveIntegerField()
     question_count = models.PositiveIntegerField(default=10)
     adjusted_score = models.FloatField(default=0)
+    correct_answers_count = models.PositiveIntegerField(default=0)
+    incorrect_answers_count = models.PositiveIntegerField(default=0)
     question_payload = models.JSONField(default=dict)
 
 

@@ -50,6 +50,7 @@
             data-practice-total="{{ section.practice_question_total }}"
             data-dashboard-url="{% url 'pages:dashboard' %}"
             data-submit-url="{{ section.submit_url }}"
+            data-progress-url="{% if section.attempt_id %}{% url 'attempt-progress' section.attempt_id %}{% endif %}"
             data-attempt-id="{{ section.attempt_id|default:'' }}"
             data-practice-progress-url="{% url 'practice-progress' %}"
         >
