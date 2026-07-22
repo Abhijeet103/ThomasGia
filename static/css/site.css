@@ -40,6 +40,13 @@ a {
 .page-shell {
   width: min(1120px, calc(100vw - 32px));
   margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1 0 auto;
 }
 
 .topbar,
@@ -431,6 +438,13 @@ a {
 .home-modules-section {
   display: grid;
   gap: 16px;
+}
+
+.home-supporting-copy {
+  margin: 6px 0 0;
+  max-width: 72ch;
+  color: var(--muted);
+  line-height: 1.65;
 }
 
 .home-module-strip {
@@ -1328,9 +1342,97 @@ a {
 }
 
 .footer {
-  padding: 28px 0 40px;
+  margin-top: 56px;
+  padding: 0;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  border-top: 1px solid rgba(45, 90, 82, 0.18);
+  background: #f3eee3;
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 0.96rem;
+}
+
+.footer-inner {
+  width: min(1120px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 32px 0 28px;
+}
+
+.footer-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.footer-brand-block {
+  display: grid;
+  gap: 10px;
+  max-width: 100%;
+}
+
+.footer-tagline {
+  margin: 0;
+  max-width: none;
+  color: var(--muted);
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.footer-support {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.footer-support a {
+  color: var(--brand-dark);
+  font-weight: 600;
+}
+
+.footer-support a:hover {
+  color: var(--accent);
+}
+
+.footer-links {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-family: Arial, Helvetica, sans-serif;
+  max-width: 20rem;
+}
+
+.footer-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid rgba(45, 90, 82, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 250, 242, 0.78);
+  color: var(--brand-dark);
+  font-weight: 600;
+}
+
+.footer-links a:hover {
+  color: var(--accent);
+  border-color: rgba(45, 90, 82, 0.3);
+  background: rgba(255, 250, 242, 0.98);
+}
+
+.footer-bottom {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(45, 90, 82, 0.12);
+}
+
+.footer-bottom p {
+  margin: 0;
+  color: var(--muted);
 }
 
 .test-player {
@@ -1791,6 +1893,23 @@ a {
   .home-benefits-card,
   .home-module-strip {
     grid-template-columns: 1fr;
+  }
+
+  .footer-top,
+  .footer-links {
+    justify-content: flex-start;
+  }
+
+  .footer {
+    margin-top: 40px;
+  }
+
+  .footer-inner {
+    padding: 26px 0 24px;
+  }
+
+  .footer-tagline {
+    white-space: normal;
   }
 
   .dashboard-iq-card {
