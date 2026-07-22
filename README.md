@@ -129,3 +129,25 @@ Local webhook forwarding example:
 ```bash
 stripe listen --forward-to http://127.0.0.1:8000/api/billing/stripe/webhook/
 ```
+## Production HTTPS on EC2
+
+This repo includes nginx and Certbot deployment helpers in [`deploy/`](./deploy):
+
+- [`deploy/mindmetric.conf`](./deploy/mindmetric.conf)
+- [`deploy/setup_certbot_nginx.sh`](./deploy/setup_certbot_nginx.sh)
+- [`deploy/SSL_CERTBOT_EC2.md`](./deploy/SSL_CERTBOT_EC2.md)
+
+Recommended production env values after SSL is live:
+
+```env
+DJANGO_ALLOWED_HOSTS=mindmetric.store,www.mindmetric.store,127.0.0.1,localhost
+CSRF_TRUSTED_ORIGINS=https://mindmetric.store,https://www.mindmetric.store
+DJANGO_SECURE_SSL_REDIRECT=True
+DJANGO_SESSION_COOKIE_SECURE=True
+DJANGO_CSRF_COOKIE_SECURE=True
+DJANGO_SECURE_HSTS_SECONDS=31536000
+DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS=True
+DJANGO_SECURE_HSTS_PRELOAD=True
+```
+
+Keep these disabled until the certificate is successfully installed and nginx is serving HTTPS.

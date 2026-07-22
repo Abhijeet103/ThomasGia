@@ -19,6 +19,7 @@ python manage.py collectstatic --noinput
 echo "Copying config files..."
 sudo cp deploy/mindmetric.service /etc/systemd/system/mindmetric.service
 sudo cp deploy/mindmetric.conf /etc/nginx/conf.d/mindmetric.conf
+sudo mkdir -p /var/www/certbot
 
 echo "Fixing static file permissions..."
 sudo chmod -R o+rx /home/ec2-user
