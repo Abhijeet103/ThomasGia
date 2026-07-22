@@ -24,8 +24,8 @@ python manage.py check
 
 echo "Copying config files..."
 sudo cp deploy/mindmetric.service /etc/systemd/system/mindmetric.service
-sudo cp deploy/mindmetric.conf /etc/nginx/conf.d/mindmetric.conf
 sudo mkdir -p /var/www/certbot
+echo "Keeping the existing nginx site config on the server to avoid overwriting Certbot-managed HTTPS settings."
 
 echo "Fixing static file permissions..."
 sudo chmod -R o+rx /home/ec2-user
