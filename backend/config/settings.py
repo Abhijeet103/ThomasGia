@@ -95,7 +95,10 @@ def _database_config_from_env():
             "PASSWORD": unquote(parsed.password or ""),
             "HOST": parsed.hostname or "",
             "PORT": str(parsed.port or "5432"),
-            "CONN_MAX_AGE": int(os.getenv("DATABASE_CONN_MAX_AGE", "60")),
+            # Keep Postgres connections short-lived by default so Supabase's
+            # small session pool doesn't get exhausted by idle Django workers.
+            "CONN_MAX_AGE": int(os.getenv("DATABASE_CONN_MAX_AGE", "0")),
+            "CONN_HEALTH_CHECKS": os.getenv("DATABASE_CONN_HEALTH_CHECKS", "True").lower() == "true",
             "OPTIONS": {"sslmode": os.getenv("DATABASE_SSLMODE", "require")},
         }
 
