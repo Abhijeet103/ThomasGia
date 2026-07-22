@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from backend.apps.accounts.models import User, UserRole
+from backend.apps.accounts.emails import send_subscription_activated_email, send_subscription_canceled_email
 
 from .models import Subscription, SubscriptionStatus
 
@@ -290,6 +291,7 @@ def activate_subscription_from_checkout(session_payload: dict) -> Subscription:
     user.role = UserRole.PAID
     user.subscription_expires_at = expiry
     user.save(update_fields=["role", "subscription_expires_at"])
+    send_subscription_activated_email(user, plan.title, expiry)
 
     logger.info(
         "Activated subscription for user=%s plan=%s session=%s created=%s expires_at=%s",
@@ -324,5 +326,6 @@ def cancel_user_subscription(user: User) -> User:
     user.role = UserRole.FREE
     user.subscription_expires_at = None
     user.save(update_fields=["role", "subscription_expires_at"])
+    send_subscription_canceled_email(user)
     logger.info("Canceled subscription access for user=%s", user.id)
     return user

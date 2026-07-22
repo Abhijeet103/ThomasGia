@@ -3,6 +3,10 @@ from __future__ import annotations
 from django.contrib import admin
 from django.urls import include, path
 
+admin.site.site_header = "MindMetric Admin"
+admin.site.site_title = "MindMetric"
+admin.site.index_title = "MindMetric Administration"
+
 
 urlpatterns = [
     path("", include("backend.apps.pages.urls")),

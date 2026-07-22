@@ -597,6 +597,68 @@ def finalize_attempt_from_saved_progress(attempt: Attempt, reason: str = "manual
         return complete_attempt_with_zero(attempt, reason=reason)
 
 
+def clear_attempt_runtime_state(attempt: Attempt) -> None:
+    if attempt.mode == AttemptMode.FULL_TEST:
+        _delete_full_test_session(attempt.id)
+    elif attempt.mode == AttemptMode.SECTION:
+        _delete_section_test_session(attempt.id)
+
+
+def recompute_attempt_summary(attempt: Attempt) -> Attempt:
+    total_score = 0
+    for section in attempt.sections.all():
+        answers_qs = section.answers.all()
+        if answers_qs.exists():
+            correct_count = answers_qs.filter(is_correct=True).count()
+            incorrect_count = answers_qs.filter(is_correct=False).count()
+        else:
+            correct_count = section.correct_answers_count
+            incorrect_count = section.incorrect_answers_count
+        section.correct_answers_count = correct_count
+        section.incorrect_answers_count = incorrect_count
+        section.adjusted_score = correct_count
+        section.save(update_fields=["correct_answers_count", "incorrect_answers_count", "adjusted_score"])
+        total_score += correct_count
+
+    attempt.overall_adjusted_score = total_score
+    if attempt.status == AttemptStatus.COMPLETED and attempt.completed_at is None:
+        attempt.completed_at = timezone.now()
+        attempt.save(update_fields=["overall_adjusted_score", "completed_at"])
+    else:
+        attempt.save(update_fields=["overall_adjusted_score"])
+    logger.info("Recomputed attempt summary attempt_id=%s total_score=%s", attempt.id, total_score)
+    return attempt
+
+
+def recompute_section_progress_for_user(user: User, assessment_type: str | None = None) -> int:
+    progress_qs = SectionProgress.objects.filter(user=user)
+    if assessment_type:
+        progress_qs = progress_qs.filter(assessment_type=assessment_type)
+
+    updates = 0
+    for progress in progress_qs:
+        relevant_sections = AttemptSection.objects.filter(
+            attempt__user=user,
+            attempt__status=AttemptStatus.COMPLETED,
+            attempt__assessment_type=progress.assessment_type,
+            section_type=progress.section_type,
+        ).select_related("attempt").order_by("-attempt__completed_at", "-attempt__id")
+        progress.tests_taken = relevant_sections.count()
+        latest_section = relevant_sections.first()
+        progress.last_test_score = latest_section.adjusted_score if latest_section else 0
+        progress.save(update_fields=["tests_taken", "last_test_score", "updated_at"])
+        updates += 1
+        logger.info(
+            "Recomputed section progress user_id=%s assessment_type=%s section=%s tests_taken=%s last_score=%s",
+            user.id,
+            progress.assessment_type,
+            progress.section_type,
+            progress.tests_taken,
+            progress.last_test_score,
+        )
+    return updates
+
+
 def _build_question_batch(attempt_id: int, section_type: str, phase: str, count: int, difficulty: str) -> list[dict[str, Any]]:
     batch = []
     for index in range(count):
