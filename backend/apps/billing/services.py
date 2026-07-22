@@ -70,7 +70,7 @@ def get_plan_catalog() -> list[PlanDefinition]:
         PlanDefinition(
             code="weekly",
             title="Weekly",
-            price_display="$4.99",
+            price_display="$9.99",
             duration_label="7 days access",
             summary="Unlimited full tests and section-wise tests for one week.",
             price_id=_price_id_for("weekly"),
@@ -78,7 +78,7 @@ def get_plan_catalog() -> list[PlanDefinition]:
         PlanDefinition(
             code="monthly",
             title="Monthly",
-            price_display="$9.99",
+            price_display="$19.99",
             duration_label="1 month access",
             summary="Unlimited full tests and section-wise tests for one month.",
             price_id=_price_id_for("monthly"),

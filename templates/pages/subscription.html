@@ -1,64 +1,96 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="content-section">
-    <h1 class="section-title">Subscription</h1>
-    <p class="section-copy">Manage your current MindMetric access, see your active plan, and upgrade whenever you want.</p>
-    <div class="dashboard-grid">
-        <article class="card">
-            <h2>Current plan</h2>
-            <p class="muted">Role: {{ request.user.get_role_display }}</p>
-            <p class="muted">
-                Plan:
-                {% if active_subscription %}
-                    {{ active_subscription.plan_code|title }}
-                {% else %}
-                    none
-                {% endif %}
-            </p>
-            <p class="muted">
-                Expiry:
-                {% if subscription_expires_at %}
-                    {{ subscription_expires_at|date:"d M Y H:i" }}
-                {% else %}
-                    none
-                {% endif %}
-            </p>
-            {% if checkout_state == "processing" %}
-                <p class="billing-note">Stripe payment returned successfully. We are waiting for backend confirmation before finalizing access.</p>
-            {% elif checkout_state == "cancelled" %}
-                <p class="billing-note">Checkout was cancelled. You can choose another plan any time.</p>
-            {% endif %}
+<section class="pricing-shell subscription-shell">
+    <div class="pricing-hero subscription-hero">
+        <span class="kicker">Subscription</span>
+        <h1 class="section-title">Manage your access</h1>
+        <p class="section-copy">Review your current plan, check when it expires, and add more time whenever you need it.</p>
+    </div>
+
+    <article class="card subscription-status-card">
+        <div class="subscription-status-head">
+            <div class="subscription-status-plan">
+                <div class="subscription-status-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" class="subscription-status-icon-svg">
+                        <path d="m12 3 2.35 4.77 5.27.77-3.81 3.72.9 5.25L12 15.06 7.29 17.5l.9-5.25L4.38 8.54l5.27-.77L12 3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <div class="subscription-status-copy">
+                    <h2>{{ subscription_plan_title }}</h2>
+                    <span class="subscription-state-pill {% if subscription_is_active %}is-active{% else %}is-inactive{% endif %}">
+                        {% if subscription_is_active %}Active{% else %}Free{% endif %}
+                    </span>
+                </div>
+            </div>
             {% if subscription_expires_at %}
-                <form method="post" action="{% url 'billing-cancel' %}" class="top-gap-small">
+                <form method="post" action="{% url 'billing-cancel' %}" class="subscription-cancel-form">
                     {% csrf_token %}
-                    <button type="submit" class="button-secondary">Cancel subscription</button>
+                    <button type="submit" class="subscription-cancel-link">Cancel subscription</button>
                 </form>
             {% endif %}
-        </article>
+        </div>
 
-        <article class="card">
-            <h2>Available plans</h2>
-            <div class="subscription-plan-list">
-                {% for plan in plans %}
-                    <div class="subscription-plan-row">
-                        <div class="subscription-plan-copy">
-                            <span class="kicker">{{ plan.title }}</span>
-                            <strong>{{ plan.price_display }}</strong>
-                            <span class="muted">{{ plan.duration_label }}</span>
-                        </div>
-                        {% if plan.show_action %}
-                            <form method="post" action="{% url 'billing-checkout' plan.code %}">
-                                {% csrf_token %}
-                                <button type="submit" class="{% if plan.is_current %}button-secondary button-disabled{% else %}button{% endif %}" {% if plan.is_current %}disabled{% endif %}>
-                                    {{ plan.button_label }}
-                                </button>
-                            </form>
-                        {% endif %}
-                    </div>
-                {% endfor %}
+        <div class="subscription-status-grid">
+            <div class="subscription-status-box">
+                <span class="subscription-status-label">Access</span>
+                <strong>{{ subscription_access_summary }}</strong>
             </div>
-        </article>
-    </div>
+            <div class="subscription-status-box">
+                <span class="subscription-status-label">Renews / Expires</span>
+                <strong>
+                    {% if subscription_expires_at %}
+                        {{ subscription_expires_at|date:"M j, Y" }}
+                    {% else %}
+                        No expiry
+                    {% endif %}
+                </strong>
+                <span class="subscription-status-helper">{{ subscription_remaining_copy }}</span>
+            </div>
+        </div>
+
+        {% if checkout_state == "processing" %}
+            <p class="billing-note">Stripe payment returned successfully. We are waiting for backend confirmation before finalizing access.</p>
+        {% elif checkout_state == "cancelled" %}
+            <p class="billing-note">Checkout was cancelled. You can choose another plan any time.</p>
+        {% endif %}
+    </article>
+
+    <section class="subscription-extension-section">
+        <div class="subscription-extension-copy">
+            <h2>Need more time?</h2>
+            <p>Add access on top of your current plan. New time stacks onto your existing expiry date.</p>
+        </div>
+
+        <div class="subscription-extension-grid">
+            {% for plan in extension_cards %}
+                <article class="card subscription-extension-card">
+                    <div class="subscription-extension-badge">{{ plan.extension_code }}</div>
+                    <div class="subscription-extension-meta">
+                        <strong>{{ plan.price_display }}</strong>
+                        <span>{{ plan.extension_copy }}</span>
+                    </div>
+                    {% if plan.show_action %}
+                        <form method="post" action="{% url 'billing-checkout' plan.code %}" class="subscription-extension-action">
+                            {% csrf_token %}
+                            <button type="submit" class="button">
+                                {{ plan.extension_title }}
+                            </button>
+                        </form>
+                    {% endif %}
+                </article>
+            {% endfor %}
+        </div>
+    </section>
+
+    <article class="pricing-sales-banner">
+        <div class="pricing-sales-copy">
+            <h2>Need cohort or institutional access?</h2>
+            <p>Bulk seats and shared access for institutes, teams, and coaching programs. We can help you choose the right rollout.</p>
+        </div>
+        <a href="{{ contact_sales_open_url }}#contact-sales-modal" class="button-secondary pricing-sales-button" data-modal-open="contact-sales-modal">Contact sales</a>
+    </article>
 </section>
+
+{% include "includes/contact_sales_modal.html" with modal_id="contact-sales-modal" modal_title="Contact sales" modal_copy="Tell us about your cohort, institute, or team and we will follow up with the right access setup." %}
 {% endblock %}

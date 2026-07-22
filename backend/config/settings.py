@@ -172,6 +172,7 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "MindMetric <support@mindmetric.store>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", "support@mindmetric.store")
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "support@mindmetric.store")
+SALES_INQUIRY_NOTIFICATION_EMAIL = os.getenv("SALES_INQUIRY_NOTIFICATION_EMAIL", "abhijeet179346@gmail.com")
 EMAIL_NOTIFICATIONS_ENABLED = os.getenv("EMAIL_NOTIFICATIONS_ENABLED", "True").lower() == "true"
 
 LOGGING = {

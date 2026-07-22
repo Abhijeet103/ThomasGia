@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     AssessmentPracticePageView,
+    ContactInquiryCreateView,
     DashboardPageView,
     FullTestPageView,
     HomePageView,
@@ -19,6 +20,7 @@ app_name = "pages"
 urlpatterns = [
     path("", HomePageView.as_view(), name="home"),
     path("pricing/", PricingPageView.as_view(), name="pricing"),
+    path("contact-sales/", ContactInquiryCreateView.as_view(), name="contact-sales"),
     path("practice/", PracticePageView.as_view(), name="practice"),
     path("practice/<slug:assessment_slug>/", AssessmentPracticePageView.as_view(), name="assessment-practice"),
     path("practice/<slug:assessment_slug>/full-test/", FullTestPageView.as_view(), name="assessment-full-test"),

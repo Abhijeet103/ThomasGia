@@ -1,41 +1,67 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="content-section">
-    <h1 class="section-title">Pricing built for practice</h1>
-    <p class="section-copy">Every user starts on the free tier with 3 full tests. When Stripe confirms payment on the backend, your role becomes paid until the subscription expiry date.</p>
-    <div class="price-grid">
-        <article class="card price">
+<section class="pricing-shell">
+    <div class="pricing-hero">
+        <span class="kicker">Pricing</span>
+        <h1 class="section-title">Pricing built for practice</h1>
+        <p class="section-copy">Start free, then unlock full access for however long you need it. No auto-renewal, pay once and access expires on the date shown.</p>
+    </div>
+
+    <div class="pricing-card-grid">
+        <article class="card pricing-plan-card pricing-plan-card-free">
             <span class="kicker">Free</span>
-            <strong>$0</strong>
-            <ul class="list">
-                <li>3 free full tests</li>
-                <li>Section-wise tests</li>
-                <li>Google login</li>
+            <div class="pricing-plan-price-row">
+                <strong>$0</strong>
+            </div>
+            <p class="pricing-plan-duration">No expiry</p>
+            <ul class="pricing-feature-list">
+                <li>3 full tests</li>
+                <li>Limited section practice</li>
             </ul>
+            <a href="{% url 'pages:practice' %}" class="button-secondary pricing-plan-button">Continue free</a>
         </article>
+
         {% for plan in plans %}
-            <article class="card price">
+            <article class="card pricing-plan-card {% if plan.code == 'monthly' %}pricing-plan-card-popular{% endif %}">
+                {% if plan.code == 'monthly' %}
+                    <span class="pricing-badge">Most popular</span>
+                {% endif %}
                 <span class="kicker">{{ plan.title }}</span>
-                <strong>{{ plan.price_display }}</strong>
-                <p class="muted">{{ plan.duration_label }}</p>
-                <ul class="list">
-                    <li>Unlimited full tests</li>
-                    <li>Unlimited section-wise tests</li>
-                    <li>{{ plan.summary }}</li>
+                <div class="pricing-plan-price-row">
+                    <strong>{{ plan.price_display }}</strong>
+                </div>
+                <p class="pricing-plan-duration">{{ plan.duration_label }}</p>
+                <ul class="pricing-feature-list">
+                    <li>Full access, all tracks</li>
+                    {% if plan.code == "weekly" %}
+                        <li>Best if you're in a rush</li>
+                    {% elif plan.code == "monthly" %}
+                        <li>Best for longer prep</li>
+                    {% endif %}
                 </ul>
                 {% if request.user.is_authenticated and plan.show_action %}
-                    <form method="post" action="{% url 'billing-checkout' plan.code %}" class="top-gap-small">
+                    <form method="post" action="{% url 'billing-checkout' plan.code %}" class="pricing-plan-action">
                         {% csrf_token %}
-                        <button type="submit" class="{% if plan.is_current %}button-secondary button-disabled{% else %}button{% endif %}" {% if plan.is_current %}disabled{% endif %}>
+                        <button type="submit" class="{% if plan.is_current %}button-secondary button-disabled{% else %}button{% endif %} pricing-plan-button" {% if plan.is_current %}disabled{% endif %}>
                             {{ plan.button_label }}
                         </button>
                     </form>
                 {% elif not request.user.is_authenticated %}
-                    <a href="{% url 'pages:login' %}?next={% url 'pages:pricing' %}" class="button top-gap-small">{{ plan.button_label }}</a>
+                    <a href="{% url 'pages:login' %}?next={% url 'pages:pricing' %}" class="button pricing-plan-button">{{ plan.button_label }}</a>
                 {% endif %}
             </article>
         {% endfor %}
     </div>
+
+    <article class="pricing-sales-banner">
+        <div class="pricing-sales-copy">
+            <h2>Preparing a group or cohort?</h2>
+            <p>Bulk seats and multi-tenant access for coaching institutes, career centers, and hiring teams. We can tailor pricing around your cohort size and rollout needs.</p>
+        </div>
+        <a href="{{ contact_sales_open_url }}#contact-sales-modal" class="button-secondary pricing-sales-button" data-modal-open="contact-sales-modal">Contact sales</a>
+    </article>
 </section>
+
+{% include "includes/contact_sales_modal.html" with modal_id="contact-sales-modal" modal_title="Contact sales" modal_copy="Share your team size and rollout needs. We will follow up with the right setup." %}
 {% endblock %}

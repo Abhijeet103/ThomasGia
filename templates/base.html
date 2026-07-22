@@ -10,6 +10,9 @@
     <meta property="og:title" content="{{ page_title|default:'MindMetric' }}">
     <meta property="og:description" content="{{ meta_description|default:'Cognitive and psychometric test practice platform.' }}">
     <meta property="og:type" content="website">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{% static 'css/site.css' %}">
 </head>
 <body data-role="{% if request.user.is_authenticated %}{{ request.user.role }}{% else %}guest{% endif %}" data-view-name="{{ request.resolver_match.view_name|default:'' }}">
@@ -17,9 +20,14 @@
         <header class="topbar">
             <a href="{% url 'pages:home' %}" class="brand">MindMetric</a>
             <nav class="nav" aria-label="User navigation">
-                <a href="{% url 'pages:practice' %}" class="{% if request.resolver_match.view_name == 'pages:practice' or request.resolver_match.view_name == 'pages:assessment-practice' or request.resolver_match.view_name == 'pages:section-detail' or request.resolver_match.view_name == 'pages:assessment-section-detail' or request.resolver_match.view_name == 'pages:full-test' or request.resolver_match.view_name == 'pages:assessment-full-test' %}is-active{% endif %}">Practice</a>
-                {% if request.user.is_authenticated %}
-                    <a href="{% url 'pages:dashboard' %}" class="{% if request.resolver_match.view_name == 'pages:dashboard' %}is-active{% endif %}">Dashboard</a>
+                <div class="nav-links">
+                    <a href="{% url 'pages:practice' %}" class="{% if request.resolver_match.view_name == 'pages:practice' or request.resolver_match.view_name == 'pages:assessment-practice' or request.resolver_match.view_name == 'pages:section-detail' or request.resolver_match.view_name == 'pages:assessment-section-detail' or request.resolver_match.view_name == 'pages:full-test' or request.resolver_match.view_name == 'pages:assessment-full-test' %}is-active{% endif %}">Practice</a>
+                    {% if request.user.is_authenticated %}
+                        <a href="{% url 'pages:dashboard' %}" class="{% if request.resolver_match.view_name == 'pages:dashboard' %}is-active{% endif %}">Dashboard</a>
+                    {% endif %}
+                </div>
+                {% if not request.user.is_authenticated %}
+                    <a href="{% url 'pages:pricing' %}" class="nav-cta {% if request.resolver_match.view_name == 'pages:pricing' %}is-active{% endif %}">Get started</a>
                 {% endif %}
                 <details class="user-menu">
                     <summary class="user-menu-trigger" aria-label="Open user menu">
@@ -42,7 +50,11 @@
                                 {% endif %}
                             </div>
                             <div class="user-menu-links">
-                                <a href="{% url 'pages:subscription' %}">Subscription</a>
+                                {% if request.user.has_active_subscription %}
+                                    <a href="{% url 'pages:subscription' %}">Subscription</a>
+                                {% else %}
+                                    <a href="{% url 'pages:pricing' %}">Pricing</a>
+                                {% endif %}
                             </div>
                             <form method="post" action="{% url 'account_logout' %}" class="user-menu-form">
                                 {% csrf_token %}
@@ -81,12 +93,42 @@
             <div class="footer-inner">
                 <div class="footer-top">
                     <div class="footer-brand-block">
-                        <p class="footer-tagline">MindMetric helps candidates practice IQ-style, cognitive, and psychometric assessments with timed sections, module drills, and structured full tests.</p>
-                        <p class="footer-support">Need help or support? Contact <a href="mailto:support@mindmetric.store">support@mindmetric.store</a>.</p>
+                        <p class="footer-logo">MindMetric</p>
+                        <p class="footer-tagline">Built for candidates who want to walk into test day prepared, not surprised.</p>
+                    </div>
+                    <div class="footer-columns">
+                        <div class="footer-col">
+                            <h4>Product</h4>
+                            <ul>
+                                <li><a href="{% url 'pages:practice' %}">Practice</a></li>
+                                {% if request.user.is_authenticated %}
+                                    <li><a href="{% url 'pages:dashboard' %}">Dashboard</a></li>
+                                    {% if request.user.has_active_subscription %}
+                                        <li><a href="{% url 'pages:subscription' %}">Subscription</a></li>
+                                    {% else %}
+                                        <li><a href="{% url 'pages:pricing' %}">Pricing</a></li>
+                                    {% endif %}
+                                {% else %}
+                                    <li><a href="{% url 'pages:pricing' %}">Pricing</a></li>
+                                    <li><a href="{% url 'pages:login' %}">Sign in</a></li>
+                                {% endif %}
+                            </ul>
+                        </div>
+                        <div class="footer-col">
+                            <h4>Support</h4>
+                            <ul>
+                                <li><a href="mailto:support@mindmetric.store">Contact</a></li>
+                                <li><a href="mailto:support@mindmetric.store">support@mindmetric.store</a></li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
                 <div class="footer-bottom">
                     <p>&copy; 2026 MindMetric. All rights reserved.</p>
+                    <div class="footer-legal">
+                        <a href="mailto:support@mindmetric.store?subject=Privacy%20request">Privacy</a>
+                        <a href="mailto:support@mindmetric.store?subject=Terms%20question">Terms</a>
+                    </div>
                 </div>
             </div>
         </footer>

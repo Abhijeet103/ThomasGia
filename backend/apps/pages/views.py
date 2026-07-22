@@ -6,13 +6,17 @@ from dataclasses import asdict
 
 from allauth.account.forms import LoginForm
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse
 from django.http import Http404
 from django.shortcuts import redirect, render
+from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.generic import TemplateView
 from django.db.models import Prefetch
 from django.views import View
+from django.views.generic.edit import FormView
 
 from backend.apps.billing.services import build_plan_cards, sync_user_subscription_access
 from backend.apps.assessments.config import (
@@ -34,6 +38,8 @@ from backend.apps.assessments.services import (
     get_section_test_previews,
     serialize_full_test_attempt_for_frontend,
 )
+from .emails import send_sale_inquiry_notification
+from .forms import SaleInquiryForm
 from prepgia.generators import generate_question
 from prepgia.preview_data import get_questions
 
@@ -96,6 +102,67 @@ def _build_estimate(score: float | int | None, assessment_type: str, section_typ
     }
 
 
+def _contact_form_initial(request, source_page: str) -> dict[str, str]:
+    initial = {"source_page": source_page}
+    if request.user.is_authenticated:
+        initial.update(
+            {
+                "email": request.user.email or "",
+            }
+        )
+    return initial
+
+
+def _visible_frontend_plans(user, active_subscription):
+    return [plan for plan in build_plan_cards(user, active_subscription) if plan["code"] != "yearly"]
+
+
+def _contact_sales_open_url(request) -> str:
+    return f"{request.path}?contact_sales=open"
+
+
+def _contact_sales_close_url(request) -> str:
+    return request.path
+
+
+def _format_remaining_time(expires_at):
+    if not expires_at:
+        return "No active expiry"
+    now = timezone.now()
+    if expires_at <= now:
+        return "Expired"
+    delta = expires_at - now
+    days = delta.days
+    if days >= 365:
+        years = days // 365
+        months = max(0, (days % 365) // 30)
+        if months:
+            return f"About {years} year{'s' if years != 1 else ''} {months} month{'s' if months != 1 else ''} remaining"
+        return f"About {years} year{'s' if years != 1 else ''} remaining"
+    if days >= 30:
+        months = days // 30
+        extra_days = days % 30
+        if extra_days:
+            return f"About {months} month{'s' if months != 1 else ''} {extra_days} day{'s' if extra_days != 1 else ''} remaining"
+        return f"About {months} month{'s' if months != 1 else ''} remaining"
+    if days >= 7:
+        weeks = days // 7
+        extra_days = days % 7
+        if extra_days:
+            return f"About {weeks} week{'s' if weeks != 1 else ''} {extra_days} day{'s' if extra_days != 1 else ''} remaining"
+        return f"About {weeks} week{'s' if weeks != 1 else ''} remaining"
+    if days >= 1:
+        return f"About {days} day{'s' if days != 1 else ''} remaining"
+    hours = max(1, delta.seconds // 3600)
+    return f"About {hours} hour{'s' if hours != 1 else ''} remaining"
+
+
+def _plan_title(active_subscription) -> str:
+    if not active_subscription:
+        return "Free plan"
+    return f"{active_subscription.plan_code.replace('_', ' ').title()} plan"
+
+
 class HomePageView(TemplateView):
     template_name = "pages/home.html"
 
@@ -130,7 +197,10 @@ class PricingPageView(TemplateView):
                 "page_title": "Pricing | MindMetric",
                 "meta_description": "View free and paid plans for MindMetric practice tests.",
                 "active_subscription": active_subscription,
-                "plans": build_plan_cards(self.request.user, active_subscription),
+                "plans": _visible_frontend_plans(self.request.user, active_subscription),
+                "contact_form": SaleInquiryForm(initial={**_contact_form_initial(self.request, "pricing"), "next": self.request.path}),
+                "contact_sales_open_url": _contact_sales_open_url(self.request),
+                "contact_sales_close_url": _contact_sales_close_url(self.request),
             }
         )
         return context
@@ -140,21 +210,85 @@ class SubscriptionPageView(LoginRequiredMixin, TemplateView):
     template_name = "pages/subscription.html"
     login_url = "/login/"
 
+    def dispatch(self, request, *args, **kwargs):
+        sync_user_subscription_access(request.user)
+        if not request.user.has_active_subscription:
+            return redirect("pages:pricing")
+        return super().dispatch(request, *args, **kwargs)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        sync_user_subscription_access(self.request.user)
         active_subscription = self.request.user.subscriptions.filter(status="active").order_by("-updated_at").first()
+        visible_plans = _visible_frontend_plans(self.request.user, active_subscription)
+        extension_cards = []
+        for plan in visible_plans:
+            extension_cards.append(
+                {
+                    **plan,
+                    "show_action": True,
+                    "button_label": "Add 7 days" if plan["code"] == "weekly" else "Add 1 month",
+                    "is_disabled": False,
+                    "extension_code": "+7d" if plan["code"] == "weekly" else "+1m",
+                    "extension_title": "Add 7 days" if plan["code"] == "weekly" else "Add 1 month",
+                    "extension_copy": "Add 7 days of access" if plan["code"] == "weekly" else "Add 1 month of access",
+                }
+            )
         context.update(
             {
                 "page_title": "Subscription | MindMetric",
                 "meta_description": "View your MindMetric subscription status and manage cancellation.",
                 "active_subscription": active_subscription,
                 "subscription_expires_at": self.request.user.subscription_expires_at,
-                "plans": build_plan_cards(self.request.user, active_subscription),
+                "plans": visible_plans,
+                "extension_cards": extension_cards,
                 "checkout_state": self.request.GET.get("checkout", ""),
+                "contact_form": SaleInquiryForm(initial={**_contact_form_initial(self.request, "subscription"), "next": self.request.path}),
+                "contact_sales_open_url": _contact_sales_open_url(self.request),
+                "contact_sales_close_url": _contact_sales_close_url(self.request),
+                "subscription_plan_title": _plan_title(active_subscription),
+                "subscription_is_active": bool(active_subscription and self.request.user.subscription_expires_at),
+                "subscription_access_summary": "Full access, all tracks" if active_subscription else "Free access with limited section practice",
+                "subscription_remaining_copy": _format_remaining_time(self.request.user.subscription_expires_at),
             }
         )
         return context
+
+
+class ContactInquiryCreateView(FormView):
+    form_class = SaleInquiryForm
+    http_method_names = ["post"]
+
+    def form_valid(self, form):
+        inquiry = form.save()
+        logger.info("Saved sales inquiry id=%s source=%s email=%s", inquiry.id, inquiry.source_page, inquiry.email)
+        try:
+            send_sale_inquiry_notification(inquiry)
+        except Exception as exc:
+            logger.exception("Failed to send sale inquiry notification for inquiry id=%s", inquiry.id)
+            messages.warning(
+                self.request,
+                "Your inquiry was saved, but the notification email could not be sent right now."
+            )
+            return redirect(self.get_success_url(form))
+
+        messages.success(self.request, "Thanks. We will contact you soon.")
+        return redirect(self.get_success_url(form))
+
+    def form_invalid(self, form):
+        messages.error(self.request, "Please complete the contact sales form and try again.")
+        return redirect(self.get_success_url(form, fallback="pages:pricing", with_modal=True))
+
+    def get_success_url(self, form, fallback: str = "pages:pricing", with_modal: bool = False):
+        next_url = form.cleaned_data.get("next") or self.request.POST.get("next") or self.request.META.get("HTTP_REFERER")
+        if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={self.request.get_host()}, require_https=self.request.is_secure()):
+            if with_modal:
+                separator = "&" if "?" in next_url else "?"
+                return f"{next_url}{separator}contact_sales=open"
+            return next_url
+        url = reverse(fallback)
+        if with_modal:
+            return f"{url}?contact_sales=open"
+        return url
 
 
 class PracticePageView(TemplateView):
