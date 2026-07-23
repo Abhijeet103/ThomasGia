@@ -27,6 +27,62 @@ class SectionType(models.TextChoices):
     CCAT_SPATIAL = "ccat_spatial", "CCAT Spatial & Abstract Reasoning"
 
 
+class PracticeTrackVisibility(models.TextChoices):
+    ACCESSIBLE = "accessible", "Accessible"
+    UPCOMING = "upcoming", "Upcoming"
+    HIDDEN = "hidden", "Hidden"
+
+
+class AssessmentTrack(models.Model):
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="assessment_tracks", blank=True, null=True)
+    assessment_type = models.CharField(max_length=64)
+    title = models.CharField(max_length=120)
+    description = models.TextField(blank=True)
+    module_count = models.PositiveIntegerField(default=0)
+    trust_line = models.CharField(max_length=255, blank=True)
+    available_languages = models.JSONField(default=list, blank=True)
+    visibility_state = models.CharField(
+        max_length=24,
+        choices=PracticeTrackVisibility.choices,
+        default=PracticeTrackVisibility.ACCESSIBLE,
+    )
+    is_active = models.BooleanField(default=True)
+    last_released_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("tenant", "assessment_type")
+        indexes = [
+            models.Index(fields=["tenant", "visibility_state", "assessment_type"]),
+        ]
+        ordering = ("title",)
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.assessment_type})"
+
+
+class AssessmentTrackWaitlistEntry(models.Model):
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="assessment_track_waitlist_entries", blank=True, null=True)
+    assessment_type = models.CharField(max_length=64)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name="assessment_track_waitlist_entries", blank=True, null=True)
+    email = models.EmailField()
+    source_page = models.CharField(max_length=64, blank=True)
+    notified_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("tenant", "assessment_type", "email")
+        indexes = [
+            models.Index(fields=["tenant", "assessment_type", "notified_at"]),
+        ]
+        ordering = ("-created_at",)
+
+    def __str__(self) -> str:
+        return f"{self.email} waiting for {self.assessment_type}"
+
+
 class Attempt(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="attempts")
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="attempts", blank=True, null=True)

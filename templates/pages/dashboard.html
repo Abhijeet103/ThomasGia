@@ -23,7 +23,24 @@
                     <span class="eyebrow">Assessment</span>
                     <h2>{{ assessment.title }}</h2>
                     <p class="muted">{{ assessment.description }}</p>
-                    <span class="dashboard-assessment-meta">{{ assessment.module_count }} modules</span>
+                    <div class="dashboard-assessment-progress">
+                        <p class="dashboard-progress-copy {% if not assessment.has_progress %}is-empty{% endif %}">
+                            {% if assessment.has_progress %}
+                                <span class="dashboard-progress-mark" aria-hidden="true">&check;</span>
+                            {% else %}
+                                <span class="dashboard-progress-mark dashboard-progress-mark--empty" aria-hidden="true">&#9675;</span>
+                            {% endif %}
+                            {{ assessment.progress_label }}
+                        </p>
+                        <div class="dashboard-progress-bar" aria-hidden="true">
+                            <span class="dashboard-progress-fill" style="width: {{ assessment.progress_percent }}%"></span>
+                        </div>
+                    </div>
+                    <div class="dashboard-assessment-footer">
+                        <span class="dashboard-assessment-link">
+                            View dashboard <span aria-hidden="true">&rarr;</span>
+                        </span>
+                    </div>
                 </button>
             {% endfor %}
         </div>

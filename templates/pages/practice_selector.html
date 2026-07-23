@@ -4,45 +4,173 @@
 <section class="content-section">
     <span class="eyebrow">Practice tracks</span>
     <h1 class="section-title">Choose your assessment</h1>
-    <p class="section-copy">Pick the test family you want to prepare for. Each track supports module practice, module tests, and full tests.</p>
+    <p class="section-copy">Live tracks are ready today. Upcoming tracks are currently in limited testing with a small group before opening to everyone.</p>
 
     <div class="practice-card-grid practice-assessment-grid">
         {% for assessment in assessments %}
-            <article class="card practice-section-card">
-                <div class="practice-card-top">
-                    <div class="practice-card-icon" aria-hidden="true">
-                        {% if assessment.key == "prepgia" %}
-                            <svg viewBox="0 0 24 24" class="practice-icon-svg">
-                                <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.75c.62.43 1 1.12 1 1.87V17h6v-.38c0-.75.38-1.44 1-1.87A7 7 0 0 0 12 2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
-                        {% else %}
-                            <svg viewBox="0 0 24 24" class="practice-icon-svg">
-                                <path d="M4 19h16M7 16V9M12 16V5M17 16v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                            </svg>
+            {% if assessment.visibility_state == "accessible" %}
+                <article class="card practice-section-card practice-track-card practice-track-card--live">
+                    <div class="practice-card-top">
+                        <div class="practice-card-icon" aria-hidden="true">
+                            {% if assessment.key == "prepgia" %}
+                                <svg viewBox="0 0 24 24" class="practice-icon-svg">
+                                    <path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.75c.62.43 1 1.12 1 1.87V17h6v-.38c0-.75.38-1.44 1-1.87A7 7 0 0 0 12 2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            {% else %}
+                                <svg viewBox="0 0 24 24" class="practice-icon-svg">
+                                    <path d="M4 19h16M7 16V9M12 16V5M17 16v-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                            {% endif %}
+                        </div>
+                        <span class="practice-status-chip {{ assessment.status_class }}">{{ assessment.status_label }}</span>
+                    </div>
+
+                    <div class="practice-track-body">
+                        <span class="practice-track-eyebrow">Assessment</span>
+                        <h2 class="practice-card-title">{{ assessment.title }}</h2>
+
+                        <div class="practice-card-meta practice-card-meta--count">
+                            <span>
+                                <svg viewBox="0 0 24 24" class="practice-meta-icon" aria-hidden="true">
+                                    <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                                {{ assessment.module_count }} modules
+                            </span>
+                        </div>
+
+                        <p class="practice-track-description">{{ assessment.description }}</p>
+
+                        {% if assessment.trust_line %}
+                            <div class="practice-track-trust">
+                                <span class="practice-track-trust-icon" aria-hidden="true">
+                                    <svg viewBox="0 0 24 24" class="practice-meta-icon">
+                                        <path d="m12 3 7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                                    </svg>
+                                </span>
+                                <span>{{ assessment.trust_line }}</span>
+                            </div>
+                        {% endif %}
+
+                        {% if assessment.available_languages %}
+                            <div class="practice-track-language-group">
+                                <span class="practice-track-language-label">Available languages</span>
+                                <div class="practice-track-language-pills">
+                                    {% for language in assessment.available_languages %}
+                                        <span class="practice-language-pill {% if 'soon' in language|lower or 'kommt bald' in language|lower %}is-muted{% endif %}">
+                                            {% if 'soon' in language|lower or 'kommt bald' in language|lower %}
+                                                <svg viewBox="0 0 24 24" class="practice-language-lock" aria-hidden="true">
+                                                    <path d="M8 10V8a4 4 0 1 1 8 0v2M7 10h10v10H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                                </svg>
+                                            {% endif %}
+                                            {{ language }}
+                                        </span>
+                                    {% endfor %}
+                                </div>
+                            </div>
                         {% endif %}
                     </div>
-                </div>
 
-                <h2 class="practice-card-title">{{ assessment.title }}</h2>
-
-                <div class="practice-card-meta">
-                    <span>
-                        <svg viewBox="0 0 24 24" class="practice-meta-icon" aria-hidden="true">
-                            <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                        </svg>
-                        {{ assessment.module_count }} modules
-                    </span>
-                </div>
-
-                <div class="practice-card-stats">
-                    <span>{{ assessment.description }}</span>
-                </div>
-
-                <div class="practice-card-actions">
-                    <a href="{% url 'pages:assessment-practice' assessment.key %}" class="practice-button-primary">Open practice</a>
-                </div>
-            </article>
+                    <div class="practice-card-actions">
+                        <a href="{{ assessment.open_url }}" class="practice-button-primary">Open practice <span class="practice-button-arrow" aria-hidden="true">&rarr;</span></a>
+                    </div>
+                </article>
+            {% endif %}
         {% endfor %}
     </div>
+
+    <div class="practice-card-grid practice-assessment-grid practice-assessment-grid--upcoming">
+        {% for assessment in assessments %}
+            {% if assessment.visibility_state == "upcoming" %}
+                <article class="card practice-section-card practice-track-card practice-track-card--upcoming">
+                    <div class="practice-track-pattern" aria-hidden="true"></div>
+                    <div class="practice-card-top">
+                        <div class="practice-card-icon practice-card-icon--locked" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" class="practice-icon-svg">
+                                <path d="M8 10V8a4 4 0 1 1 8 0v2M7 10h10v10H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <span class="practice-status-chip {{ assessment.status_class }}">{{ assessment.status_label }}</span>
+                    </div>
+
+                    <div class="practice-track-body">
+                        <span class="practice-track-eyebrow">Assessment</span>
+                        <h2 class="practice-card-title">{{ assessment.title }}</h2>
+
+                        <div class="practice-card-meta practice-card-meta--count">
+                            <span>
+                                <svg viewBox="0 0 24 24" class="practice-meta-icon" aria-hidden="true">
+                                    <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                </svg>
+                                {{ assessment.module_count }} modules planned
+                            </span>
+                        </div>
+
+                        <p class="practice-track-description">{{ assessment.description }}</p>
+                    </div>
+
+                    <div class="practice-card-actions practice-card-actions--stacked">
+                        {% if request.user.is_authenticated %}
+                            {% if assessment.is_waitlisted %}
+                                <button type="button" class="practice-button-secondary" disabled>You’re on the list</button>
+                            {% else %}
+                                <form method="post" action="{% url 'pages:track-waitlist' %}">
+                                    {% csrf_token %}
+                                    {{ assessment.notify_form.assessment_type }}
+                                    {{ assessment.notify_form.next }}
+                                    <button type="submit" class="practice-button-secondary">Notify me when it opens</button>
+                                </form>
+                            {% endif %}
+                        {% else %}
+                            <a href="{{ assessment.login_notify_url }}" class="practice-button-secondary">Sign in to get notified</a>
+                        {% endif %}
+                    </div>
+                </article>
+            {% endif %}
+        {% endfor %}
+    </div>
+
+    <article class="practice-more-strip">
+        <div class="practice-more-copy">
+            <span class="practice-more-dots" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+            </span>
+            <p><strong>More tracks are in the works.</strong> New assessments get added as they clear internal testing.</p>
+        </div>
+        <a href="{{ suggest_test_open_url }}#suggest-test-modal" class="practice-more-link" data-modal-open="suggest-test-modal">Suggest a test <span aria-hidden="true">&rarr;</span></a>
+    </article>
 </section>
+
+<div class="modal-shell" id="suggest-test-modal" data-modal {% if request.GET.suggest_test != 'open' %}hidden{% endif %}>
+    <a href="{{ suggest_test_close_url }}" class="modal-backdrop" data-modal-close aria-label="Close modal"></a>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="suggest-test-modal-title">
+        <a href="{{ suggest_test_close_url }}" class="modal-close" aria-label="Close" data-modal-close>&times;</a>
+        <span class="kicker">Suggestions</span>
+        <h2 id="suggest-test-modal-title">Suggest a test</h2>
+        <p class="modal-copy">Tell us which assessment you want next and we will keep it on the rollout list.</p>
+        <form method="post" action="{% url 'pages:suggest-test' %}" class="modal-form">
+            {% csrf_token %}
+            {{ suggest_test_form.next }}
+            {{ suggest_test_form.source_page }}
+            <div class="modal-form-grid">
+                <label class="form-field">
+                    <span>Email</span>
+                    {{ suggest_test_form.email }}
+                </label>
+                <label class="form-field">
+                    <span>Requested test</span>
+                    {{ suggest_test_form.requested_test }}
+                </label>
+                <label class="form-field form-field-wide">
+                    <span>Anything specific?</span>
+                    {{ suggest_test_form.message }}
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="submit" class="button">Send suggestion</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}

@@ -5,6 +5,8 @@ from backend.apps.assessments.models import SectionType
 
 ASSESSMENT_PREPGIA = "prepgia"
 ASSESSMENT_CCAT = "ccat"
+ASSESSMENT_WATSON_GLASER = "watson_glaser"
+ASSESSMENT_SHL_VERIFY = "shl_verify"
 
 ASSESSMENT_CONFIG = {
     ASSESSMENT_PREPGIA: {
@@ -93,6 +95,49 @@ ASSESSMENT_CONFIG = {
     },
 }
 
+PRACTICE_TRACK_LIBRARY = {
+    ASSESSMENT_PREPGIA: {
+        "key": ASSESSMENT_PREPGIA,
+        "title": "Thomas GIA",
+        "description": "Thomas GIA-style speed practice with full tests and section-wise drills.",
+        "module_count": len(ASSESSMENT_CONFIG[ASSESSMENT_PREPGIA]["modules"]),
+        "trust_line": "Used by 30,000+ employers across the UK and Europe",
+        "available_languages": ["English", "Deutsch — kommt bald"],
+        "route_enabled": True,
+        "default_visibility_state": "accessible",
+    },
+    ASSESSMENT_CCAT: {
+        "key": ASSESSMENT_CCAT,
+        "title": "CCAT",
+        "description": "Numerical, verbal, and abstract aptitude practice with module drills and full tests.",
+        "module_count": len(ASSESSMENT_CONFIG[ASSESSMENT_CCAT]["modules"]),
+        "trust_line": "Taken 10M+ times at 4,500+ US employers",
+        "available_languages": ["English"],
+        "route_enabled": True,
+        "default_visibility_state": "accessible",
+    },
+    ASSESSMENT_WATSON_GLASER: {
+        "key": ASSESSMENT_WATSON_GLASER,
+        "title": "Watson-Glaser",
+        "description": "Critical reasoning practice covering inference, assumptions, and argument evaluation.",
+        "module_count": 4,
+        "trust_line": "In testing with a small group right now",
+        "available_languages": ["English"],
+        "route_enabled": False,
+        "default_visibility_state": "upcoming",
+    },
+    ASSESSMENT_SHL_VERIFY: {
+        "key": ASSESSMENT_SHL_VERIFY,
+        "title": "SHL Verify",
+        "description": "Numerical, verbal, and inductive reasoning practice in the SHL question style.",
+        "module_count": 4,
+        "trust_line": "In testing with a small group right now",
+        "available_languages": ["English"],
+        "route_enabled": False,
+        "default_visibility_state": "upcoming",
+    },
+}
+
 
 def get_assessment_config(assessment_type: str) -> dict:
     try:
@@ -125,13 +170,11 @@ def get_time_limit_seconds(section_type: str) -> int:
 
 def get_assessment_cards() -> list[dict]:
     cards = []
-    for key, config in ASSESSMENT_CONFIG.items():
+    for key, config in PRACTICE_TRACK_LIBRARY.items():
         cards.append(
             {
                 "key": key,
-                "title": config["title"],
-                "description": config["description"],
-                "module_count": len(config["modules"]),
+                **config,
             }
         )
     return cards

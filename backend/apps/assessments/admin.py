@@ -9,7 +9,17 @@ from django.utils import timezone
 
 from backend.apps.tenants.admin_mixins import TenantScopedAdminMixin
 
-from .models import Attempt, AttemptAnswer, AttemptSection, SectionProgress, WordMeaningItem
+from .emails import send_track_release_email
+from .models import (
+    AssessmentTrack,
+    AssessmentTrackWaitlistEntry,
+    Attempt,
+    AttemptAnswer,
+    AttemptSection,
+    PracticeTrackVisibility,
+    SectionProgress,
+    WordMeaningItem,
+)
 from .services import (
     clear_attempt_runtime_state,
     expire_stale_attempts,
@@ -17,6 +27,102 @@ from .services import (
     recompute_attempt_summary,
     recompute_section_progress_for_user,
 )
+
+
+def _notify_waitlist_for_track(track: AssessmentTrack) -> int:
+    waitlist_entries = AssessmentTrackWaitlistEntry.objects.filter(
+        tenant=track.tenant,
+        assessment_type=track.assessment_type,
+        notified_at__isnull=True,
+    ).order_by("created_at")
+    sent_count = 0
+    for entry in waitlist_entries:
+        if send_track_release_email(email=entry.email, track_title=track.title):
+            entry.notified_at = timezone.now()
+            entry.save(update_fields=["notified_at", "updated_at"])
+            sent_count += 1
+    if sent_count:
+        track.last_released_at = timezone.now()
+        track.save(update_fields=["last_released_at", "updated_at"])
+    return sent_count
+
+
+@admin.register(AssessmentTrack)
+class AssessmentTrackAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    list_display = ("title", "assessment_type", "tenant", "visibility_state", "is_active", "last_released_at")
+    list_filter = ("visibility_state", "is_active", "tenant")
+    search_fields = ("title", "assessment_type", "description", "trust_line")
+    readonly_fields = ("created_at", "updated_at", "last_released_at")
+    actions = ("mark_selected_tracks_accessible", "mark_selected_tracks_upcoming", "hide_selected_tracks", "notify_waitlist_for_selected_tracks")
+    fields = (
+        "tenant",
+        "assessment_type",
+        "title",
+        "description",
+        "module_count",
+        "trust_line",
+        "available_languages",
+        "visibility_state",
+        "is_active",
+        "last_released_at",
+        "created_at",
+        "updated_at",
+    )
+
+    def save_model(self, request, obj, form, change):
+        previous_state = None
+        if change and obj.pk:
+            previous_state = (
+                AssessmentTrack.objects.filter(pk=obj.pk)
+                .values_list("visibility_state", flat=True)
+                .first()
+            )
+        super().save_model(request, obj, form, change)
+        if previous_state != PracticeTrackVisibility.ACCESSIBLE and obj.visibility_state == PracticeTrackVisibility.ACCESSIBLE:
+            sent_count = _notify_waitlist_for_track(obj)
+            if sent_count:
+                self.message_user(
+                    request,
+                    f"Track is live. Sent {sent_count} waitlist notification(s) for {obj.title}.",
+                    level=messages.SUCCESS,
+                )
+
+    @admin.action(description="Mark selected tracks as accessible")
+    def mark_selected_tracks_accessible(self, request, queryset):
+        updated = 0
+        sent_total = 0
+        for track in queryset:
+            if track.visibility_state != PracticeTrackVisibility.ACCESSIBLE:
+                track.visibility_state = PracticeTrackVisibility.ACCESSIBLE
+                track.save(update_fields=["visibility_state", "updated_at"])
+                updated += 1
+            sent_total += _notify_waitlist_for_track(track)
+        self.message_user(request, f"Marked {updated} track(s) accessible and sent {sent_total} waitlist notification(s).", level=messages.SUCCESS)
+
+    @admin.action(description="Mark selected tracks as upcoming")
+    def mark_selected_tracks_upcoming(self, request, queryset):
+        updated = queryset.update(visibility_state=PracticeTrackVisibility.UPCOMING)
+        self.message_user(request, f"Marked {updated} track(s) as upcoming.", level=messages.SUCCESS)
+
+    @admin.action(description="Hide selected tracks")
+    def hide_selected_tracks(self, request, queryset):
+        updated = queryset.update(visibility_state=PracticeTrackVisibility.HIDDEN)
+        self.message_user(request, f"Hid {updated} track(s).", level=messages.SUCCESS)
+
+    @admin.action(description="Send waitlist notifications for selected tracks")
+    def notify_waitlist_for_selected_tracks(self, request, queryset):
+        sent_total = 0
+        for track in queryset:
+            sent_total += _notify_waitlist_for_track(track)
+        self.message_user(request, f"Sent {sent_total} waitlist notification(s).", level=messages.SUCCESS)
+
+
+@admin.register(AssessmentTrackWaitlistEntry)
+class AssessmentTrackWaitlistEntryAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    list_display = ("email", "assessment_type", "tenant", "user", "notified_at", "created_at")
+    list_filter = ("assessment_type", "notified_at", "tenant")
+    search_fields = ("email", "user__email", "assessment_type")
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(Attempt)

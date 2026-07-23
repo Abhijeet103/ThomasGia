@@ -28,13 +28,23 @@ from backend.apps.tenants.utils import get_default_tenant
 from backend.apps.assessments.config import (
     ASSESSMENT_CCAT,
     ASSESSMENT_PREPGIA,
+    PRACTICE_TRACK_LIBRARY,
     get_assessment_cards,
     get_assessment_config,
     get_assessment_module_keys,
     get_module_meta,
     get_time_limit_seconds,
 )
-from backend.apps.assessments.models import AttemptMode, AttemptSection, AttemptStatus, SectionProgress, SectionType
+from backend.apps.assessments.models import (
+    AssessmentTrack,
+    AssessmentTrackWaitlistEntry,
+    AttemptMode,
+    AttemptSection,
+    AttemptStatus,
+    PracticeTrackVisibility,
+    SectionProgress,
+    SectionType,
+)
 from backend.apps.assessments.services import (
     FullTestSessionError,
     can_start_attempt,
@@ -45,7 +55,7 @@ from backend.apps.assessments.services import (
     serialize_full_test_attempt_for_frontend,
 )
 from .emails import send_sale_inquiry_notification
-from .forms import SaleInquiryForm
+from .forms import SaleInquiryForm, TestSuggestionForm, TrackWaitlistForm
 from prepgia.generators import generate_question
 from prepgia.preview_data import get_questions
 
@@ -129,6 +139,118 @@ def _contact_sales_open_url(request) -> str:
 
 def _contact_sales_close_url(request) -> str:
     return request.path
+
+
+def _suggest_test_open_url(request) -> str:
+    return f"{request.path}?suggest_test=open"
+
+
+def _suggest_test_close_url(request) -> str:
+    return request.path
+
+
+def _current_tenant(request):
+    return getattr(request, "tenant", None) or getattr(getattr(request, "user", None), "tenant", None) or get_default_tenant()
+
+
+def _track_open_url(assessment_key: str) -> str:
+    return reverse("pages:assessment-practice", args=[assessment_key])
+
+
+def _notify_redirect_target(request) -> str:
+    return request.META.get("HTTP_REFERER") or reverse("pages:practice")
+
+
+def _notify_me_login_url(request) -> str:
+    return f"{reverse('pages:login')}?next={reverse('pages:practice')}"
+
+
+def _merge_track_languages(base_languages, override_languages) -> list[str]:
+    merged = []
+    for language in list(base_languages or []) + list(override_languages or []):
+        if language and language not in merged:
+            merged.append(language)
+    return merged
+
+
+def _build_practice_assessment_cards(request) -> list[dict]:
+    tenant = _current_tenant(request)
+    user = request.user if request.user.is_authenticated else None
+
+    overrides = {}
+    if tenant:
+        for track in AssessmentTrack.objects.filter(tenant=tenant, is_active=True):
+            overrides[track.assessment_type] = track
+    for track in AssessmentTrack.objects.filter(tenant__isnull=True, is_active=True):
+        overrides.setdefault(track.assessment_type, track)
+
+    waitlisted_assessments = set()
+    if user:
+        waitlisted_assessments = set(
+            AssessmentTrackWaitlistEntry.objects.filter(
+                tenant=tenant,
+                email__iexact=user.email,
+            ).values_list("assessment_type", flat=True)
+        )
+
+    cards = []
+    seen = set()
+    base_cards = get_assessment_cards()
+    for base in base_cards:
+        seen.add(base["key"])
+        override = overrides.get(base["key"])
+        visibility_state = (
+            override.visibility_state
+            if override
+            else base.get("default_visibility_state", PracticeTrackVisibility.ACCESSIBLE)
+        )
+        if visibility_state == PracticeTrackVisibility.HIDDEN:
+            continue
+        route_enabled = bool(base.get("route_enabled"))
+        can_open = visibility_state == PracticeTrackVisibility.ACCESSIBLE and route_enabled
+        cards.append(
+            {
+                **base,
+                "title": override.title if override and override.title else base["title"],
+                "description": override.description if override and override.description else base["description"],
+                "module_count": override.module_count if override and override.module_count else base["module_count"],
+                "trust_line": override.trust_line if override and override.trust_line else base.get("trust_line", ""),
+                "available_languages": _merge_track_languages(base.get("available_languages", []), override.available_languages if override else []),
+                "visibility_state": visibility_state,
+                "status_label": "Live" if visibility_state == PracticeTrackVisibility.ACCESSIBLE else "Coming soon",
+                "status_class": "track-live" if visibility_state == PracticeTrackVisibility.ACCESSIBLE else "track-upcoming",
+                "can_open": can_open,
+                "open_url": _track_open_url(base["key"]) if route_enabled else "",
+                "notify_form": TrackWaitlistForm(initial={"assessment_type": base["key"], "next": _notify_redirect_target(request)}),
+                "is_waitlisted": base["key"] in waitlisted_assessments,
+                "login_notify_url": _notify_me_login_url(request),
+            }
+        )
+
+    for assessment_key, override in overrides.items():
+        if assessment_key in seen or override.visibility_state == PracticeTrackVisibility.HIDDEN:
+            continue
+        cards.append(
+            {
+                "key": assessment_key,
+                "title": override.title,
+                "description": override.description,
+                "module_count": override.module_count,
+                "trust_line": override.trust_line,
+                "available_languages": override.available_languages or [],
+                "route_enabled": False,
+                "visibility_state": override.visibility_state,
+                "status_label": "Live" if override.visibility_state == PracticeTrackVisibility.ACCESSIBLE else "Coming soon",
+                "status_class": "track-live" if override.visibility_state == PracticeTrackVisibility.ACCESSIBLE else "track-upcoming",
+                "can_open": False,
+                "open_url": "",
+                "notify_form": TrackWaitlistForm(initial={"assessment_type": assessment_key, "next": _notify_redirect_target(request)}),
+                "is_waitlisted": assessment_key in waitlisted_assessments,
+                "login_notify_url": _notify_me_login_url(request),
+            }
+        )
+
+    return cards
 
 
 def _format_remaining_time(expires_at):
@@ -315,10 +437,91 @@ class PracticePageView(TemplateView):
             {
                 "page_title": "Practice | MindMetric",
                 "meta_description": "Choose between Thomas GIA and CCAT practice tracks.",
-                "assessments": get_assessment_cards(),
+                "assessments": _build_practice_assessment_cards(self.request),
+                "suggest_test_form": TestSuggestionForm(
+                    initial={
+                        "email": self.request.user.email if self.request.user.is_authenticated else "",
+                        "source_page": "practice",
+                        "next": self.request.path,
+                    }
+                ),
+                "suggest_test_open_url": _suggest_test_open_url(self.request),
+                "suggest_test_close_url": _suggest_test_close_url(self.request),
             }
         )
         return context
+
+
+class TestSuggestionCreateView(FormView):
+    form_class = TestSuggestionForm
+    http_method_names = ["post"]
+
+    def form_valid(self, form):
+        form.instance.tenant = _current_tenant(self.request)
+        if self.request.user.is_authenticated:
+            form.instance.user = self.request.user
+        form.save()
+        messages.success(self.request, "Thanks. We have saved your test suggestion.")
+        return redirect(self.get_success_url(form))
+
+    def form_invalid(self, form):
+        messages.error(self.request, "Please complete the suggest-a-test form and try again.")
+        return redirect(self.get_success_url(form, with_modal=True))
+
+    def get_success_url(self, form, with_modal: bool = False):
+        next_url = form.cleaned_data.get("next") or self.request.POST.get("next") or reverse("pages:practice")
+        if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={self.request.get_host()}, require_https=self.request.is_secure()):
+            if with_modal:
+                separator = "&" if "?" in next_url else "?"
+                return f"{next_url}{separator}suggest_test=open"
+            return next_url
+        url = reverse("pages:practice")
+        if with_modal:
+            return f"{url}?suggest_test=open"
+        return url
+
+
+class TrackWaitlistCreateView(LoginRequiredMixin, FormView):
+    form_class = TrackWaitlistForm
+    http_method_names = ["post"]
+    login_url = "/login/"
+
+    def form_valid(self, form):
+        assessment_type = form.cleaned_data["assessment_type"]
+        if assessment_type not in PRACTICE_TRACK_LIBRARY:
+            messages.error(self.request, "That assessment could not be found.")
+            return redirect(self._success_url(form))
+
+        tenant = _current_tenant(self.request)
+        entry, created = AssessmentTrackWaitlistEntry.objects.get_or_create(
+            tenant=tenant,
+            assessment_type=assessment_type,
+            email=self.request.user.email,
+            defaults={
+                "user": self.request.user,
+                "source_page": "practice",
+            },
+        )
+        if not created and entry.user_id is None:
+            entry.user = self.request.user
+            entry.save(update_fields=["user", "updated_at"])
+
+        track_title = PRACTICE_TRACK_LIBRARY[assessment_type]["title"]
+        if created:
+            messages.success(self.request, f"You are on the waitlist for {track_title}. We will notify you when it opens.")
+        else:
+            messages.info(self.request, f"You are already on the waitlist for {track_title}.")
+        return redirect(self._success_url(form))
+
+    def form_invalid(self, form):
+        messages.error(self.request, "Please try again.")
+        return redirect(self._success_url(form))
+
+    def _success_url(self, form):
+        next_url = form.cleaned_data.get("next") or self.request.POST.get("next") or reverse("pages:practice")
+        if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={self.request.get_host()}, require_https=self.request.is_secure()):
+            return next_url
+        return reverse("pages:practice")
 
 
 class AssessmentPracticePageView(TemplateView):
@@ -654,14 +857,47 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
         chart_data = {}
         assessment_cards = []
         assessment_estimates = {}
+        progress_rows = {}
+        for item in SectionProgress.objects.filter(user=self.request.user):
+            progress_rows.setdefault(item.assessment_type, []).append(item)
         for assessment_key in (ASSESSMENT_PREPGIA, ASSESSMENT_CCAT):
             config = get_assessment_config(assessment_key)
+            module_count = len(config["modules"])
+            assessment_progress = {
+                row.section_type: row for row in progress_rows.get(assessment_key, [])
+            }
+            modules_touched = 0
+            completed_count = 0
+            for module in config["modules"]:
+                row = assessment_progress.get(module["key"])
+                practice_solved = row.practice_questions_solved if row else 0
+                tests_taken = row.tests_taken if row else 0
+                practice_goal = SECTION_PRACTICE_GOAL
+                test_goal = 10
+                practice_ratio = min(practice_solved / practice_goal, 1) if practice_goal else 0
+                test_ratio = min(tests_taken / test_goal, 1) if test_goal else 0
+                module_progress_percent = round((practice_ratio * 0.5 + test_ratio * 0.5) * 100)
+                if practice_solved > 0 or tests_taken > 0:
+                    modules_touched += 1
+                if module_progress_percent >= 100:
+                    completed_count += 1
+            progress_percent = round((completed_count / module_count) * 100) if module_count else 0
             assessment_cards.append(
                 {
                     "key": assessment_key,
                     "title": config["title"],
                     "description": config["description"],
-                    "module_count": len(config["modules"]),
+                    "module_count": module_count,
+                    "modules_touched": modules_touched,
+                    "completed_count": completed_count,
+                    "progress_percent": progress_percent,
+                    "has_progress": modules_touched > 0,
+                    "is_complete": completed_count == module_count and module_count > 0,
+                    "progress_label": (
+                        f"{completed_count} out of {module_count} completed"
+                        if modules_touched > 0
+                        else "Not started yet"
+                    ),
                 }
             )
             chart_data[assessment_key] = {"full_test": []}
