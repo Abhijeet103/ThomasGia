@@ -232,7 +232,6 @@ def get_or_create_section_attempt(
     assessment_type: str | None = None,
 ) -> Attempt:
     resolved_assessment_type = assessment_type or get_module_assessment_type(section_type)
-    expire_stale_attempts(user)
     active_attempt = (
         Attempt.objects.filter(
             user=user,

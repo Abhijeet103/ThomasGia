@@ -24,7 +24,7 @@
                 </div>
             </div>
             {% if subscription_expires_at %}
-                <form method="post" action="{% url 'billing-cancel' %}" class="subscription-cancel-form">
+                <form method="post" action="{% url 'billing-cancel' %}" class="subscription-cancel-form" data-show-loader>
                     {% csrf_token %}
                     <button type="submit" class="subscription-cancel-link">Cancel subscription</button>
                 </form>
@@ -73,7 +73,7 @@
                     {% if plan.show_action %}
                         <div class="subscription-extension-actions">
                             {% if paypal_enabled %}
-                                <form method="post" action="{% url 'billing-paypal-checkout' plan.code %}" class="subscription-extension-action">
+                                <form method="post" action="{% url 'billing-paypal-checkout' plan.code %}" class="subscription-extension-action" data-show-loader>
                                     {% csrf_token %}
                                     <button type="submit" class="button">
                                         {{ plan.extension_title }}
@@ -81,7 +81,7 @@
                                 </form>
                             {% endif %}
                             {% if stripe_enabled %}
-                                <form method="post" action="{% url 'billing-checkout' plan.code %}" class="subscription-extension-action">
+                                <form method="post" action="{% url 'billing-checkout' plan.code %}" class="subscription-extension-action" data-show-loader>
                                     {% csrf_token %}
                                     <button type="submit" class="button-secondary">
                                         {{ plan.extension_title }}

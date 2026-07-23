@@ -10,7 +10,7 @@
                 Sign up with your name, email and password, or continue with Google.
             </p>
 
-            <form method="post" action="{% url 'account_signup' %}" class="login-form">
+            <form method="post" action="{% url 'account_signup' %}" class="login-form" data-show-loader>
                 {% csrf_token %}
                 {% if redirect_field_value %}
                     <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
@@ -51,10 +51,10 @@
             </form>
 
             <div class="login-divider"><span>or</span></div>
-            <a href="/accounts/google/login/" class="button-secondary login-google">Continue with Google</a>
+            <a href="/accounts/google/login/" data-show-loader class="button-secondary login-google">Continue with Google</a>
 
             <p class="muted" style="text-align:center;margin-top:16px;font-size:0.92rem;">
-                Already have an account? <a href="{% url 'account_login' %}" style="color:var(--brand-dark);font-weight:700;">Sign in</a>
+                Already have an account? <a href="{% url 'account_login' %}" data-show-loader style="color:var(--brand-dark);font-weight:700;">Sign in</a>
             </p>
         </article>
     </div>

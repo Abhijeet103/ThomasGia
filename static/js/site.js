@@ -35,30 +35,18 @@ function initPageLoader() {
     document.body.classList.remove("is-loading");
   };
 
-  const isInternalNavigableLink = (link) => {
-    const href = link.getAttribute("href");
-    if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
-      return false;
-    }
-    if (link.target === "_blank" || link.hasAttribute("download") || link.dataset.modalOpen) {
-      return false;
-    }
-    const url = new URL(href, window.location.href);
-    if (url.origin !== window.location.origin) {
-      return false;
-    }
-    return url.href !== window.location.href;
-  };
+  window.showPageLoader = showLoader;
+  window.hidePageLoader = hideLoader;
 
   document.addEventListener("click", (event) => {
-    const link = event.target.closest("a");
-    if (!link || event.defaultPrevented) {
+    const trigger = event.target.closest("a[data-show-loader], button[data-show-loader], input[data-show-loader]");
+    if (!trigger || event.defaultPrevented) {
       return;
     }
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
     }
-    if (!isInternalNavigableLink(link)) {
+    if (trigger instanceof HTMLButtonElement && trigger.disabled) {
       return;
     }
     showLoader();
@@ -69,7 +57,7 @@ function initPageLoader() {
     if (!(form instanceof HTMLFormElement) || event.defaultPrevented) {
       return;
     }
-    if (form.dataset.noLoader !== undefined) {
+    if (form.dataset.showLoader === undefined) {
       return;
     }
     showLoader();
@@ -340,6 +328,7 @@ function initSectionPlayer() {
     }
     hideFeedback();
     if (mode === "test" && player.dataset.submitUrl) {
+      window.showPageLoader?.();
       if (completeSummaryEl) {
         completeSummaryEl.textContent = "Saving your section test result...";
       }
@@ -364,6 +353,7 @@ function initSectionPlayer() {
           return;
         }
       } catch (error) {
+        window.hidePageLoader?.();
         if (completeSummaryEl) {
           completeSummaryEl.textContent = error.message || "Could not save the section test result.";
         }
@@ -379,6 +369,7 @@ function initSectionPlayer() {
       return;
     }
     showStage(loadingStage);
+    window.showPageLoader?.();
     hideFeedback();
     if (timerInterval) {
       window.clearInterval(timerInterval);
@@ -916,6 +907,7 @@ function initFullTestPlayer() {
     }
 
     try {
+      window.showPageLoader?.();
       const response = await fetch(player.dataset.submitUrl, {
         method: "POST",
         headers: {
@@ -939,6 +931,7 @@ function initFullTestPlayer() {
         return;
       }
     } catch (error) {
+      window.hidePageLoader?.();
       if (completeSummaryEl) {
         completeSummaryEl.textContent = error.message || "There was a problem submitting the test.";
       }

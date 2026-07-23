@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.contrib.auth import logout
 from django.http import HttpResponseForbidden
 
-from .utils import resolve_tenant_from_host
+from .utils import reset_current_tenant_slug, resolve_tenant_from_host, set_current_tenant_slug
 
 
 class TenantMiddleware:
@@ -12,7 +12,11 @@ class TenantMiddleware:
 
     def __call__(self, request):
         request.tenant = resolve_tenant_from_host(request.get_host())
-        return self.get_response(request)
+        token = set_current_tenant_slug(getattr(request.tenant, "slug", None))
+        try:
+            return self.get_response(request)
+        finally:
+            reset_current_tenant_slug(token)
 
 
 class TenantAccessMiddleware:
@@ -33,4 +37,3 @@ class TenantAccessMiddleware:
             logout(request)
             return HttpResponseForbidden("This account does not belong to this tenant.")
         return self.get_response(request)
-

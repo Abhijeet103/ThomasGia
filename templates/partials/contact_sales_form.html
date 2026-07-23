@@ -1,0 +1,29 @@
+<a href="{{ contact_sales_close_url }}" class="modal-close" aria-label="Close" data-modal-close>&times;</a>
+<span class="kicker">Sales</span>
+<h2 id="{{ modal_id }}-title">{{ modal_title }}</h2>
+<p class="modal-copy">{{ modal_copy }}</p>
+<form method="post" action="{% url 'pages:contact-sales' %}" class="modal-form" hx-post="{% url 'pages:contact-sales' %}" hx-target="closest .modal-card" hx-swap="innerHTML">
+    {% csrf_token %}
+    {{ contact_form.next }}
+    {{ contact_form.source_page }}
+    <div class="modal-form-grid">
+        <label class="form-field">
+            <span>Contact email</span>
+            {{ contact_form.email }}
+            {% if contact_form.email.errors %}<small class="form-error">{{ contact_form.email.errors|join:", " }}</small>{% endif %}
+        </label>
+        <label class="form-field">
+            <span>Contact phone</span>
+            {{ contact_form.phone }}
+            {% if contact_form.phone.errors %}<small class="form-error">{{ contact_form.phone.errors|join:", " }}</small>{% endif %}
+        </label>
+        <label class="form-field form-field-wide">
+            <span>Ask anything</span>
+            {{ contact_form.message }}
+            {% if contact_form.message.errors %}<small class="form-error">{{ contact_form.message.errors|join:", " }}</small>{% endif %}
+        </label>
+    </div>
+    <div class="modal-actions">
+        <button type="submit" class="button">Send inquiry</button>
+    </div>
+</form>

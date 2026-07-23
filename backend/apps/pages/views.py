@@ -549,7 +549,6 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        expired_count = expire_stale_attempts(self.request.user)
         attempts = (
             self.request.user.attempts
             .prefetch_related(

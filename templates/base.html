@@ -18,8 +18,13 @@
 <body data-role="{% if request.user.is_authenticated %}{{ request.user.role }}{% else %}guest{% endif %}" data-view-name="{{ request.resolver_match.view_name|default:'' }}">
     <div class="page-loader" data-page-loader hidden aria-live="polite" aria-label="Loading">
         <div class="page-loader-panel">
-            <span class="page-loader-spinner" aria-hidden="true"></span>
-            <span class="page-loader-text">Loading...</span>
+            <div class="page-loader-dots" aria-hidden="true">
+                <span class="page-loader-dot"></span>
+                <span class="page-loader-dot"></span>
+                <span class="page-loader-dot"></span>
+                <span class="page-loader-dot"></span>
+                <span class="page-loader-dot"></span>
+            </div>
         </div>
     </div>
     <div class="page-shell">
@@ -27,13 +32,13 @@
             <a href="{% url 'pages:home' %}" class="brand">MindMetric</a>
             <nav class="nav" aria-label="User navigation">
                 <div class="nav-links">
-                    <a href="{% url 'pages:practice' %}" class="{% if request.resolver_match.view_name == 'pages:practice' or request.resolver_match.view_name == 'pages:assessment-practice' or request.resolver_match.view_name == 'pages:section-detail' or request.resolver_match.view_name == 'pages:assessment-section-detail' or request.resolver_match.view_name == 'pages:full-test' or request.resolver_match.view_name == 'pages:assessment-full-test' %}is-active{% endif %}">Practice</a>
+                    <a href="{% url 'pages:practice' %}" data-show-loader class="{% if request.resolver_match.view_name == 'pages:practice' or request.resolver_match.view_name == 'pages:assessment-practice' or request.resolver_match.view_name == 'pages:section-detail' or request.resolver_match.view_name == 'pages:assessment-section-detail' or request.resolver_match.view_name == 'pages:full-test' or request.resolver_match.view_name == 'pages:assessment-full-test' %}is-active{% endif %}">Practice</a>
                     {% if request.user.is_authenticated %}
-                        <a href="{% url 'pages:dashboard' %}" class="{% if request.resolver_match.view_name == 'pages:dashboard' %}is-active{% endif %}">Dashboard</a>
+                        <a href="{% url 'pages:dashboard' %}" data-show-loader class="{% if request.resolver_match.view_name == 'pages:dashboard' %}is-active{% endif %}">Dashboard</a>
                     {% endif %}
                 </div>
                 {% if not request.user.is_authenticated %}
-                    <a href="{% url 'pages:pricing' %}" class="nav-cta {% if request.resolver_match.view_name == 'pages:pricing' %}is-active{% endif %}">Get started</a>
+                    <a href="{% url 'pages:pricing' %}" data-show-loader class="nav-cta {% if request.resolver_match.view_name == 'pages:pricing' %}is-active{% endif %}">Get started</a>
                 {% endif %}
                 <details class="user-menu">
                     <summary class="user-menu-trigger" aria-label="Open user menu">
@@ -57,12 +62,12 @@
                             </div>
                             <div class="user-menu-links">
                                 {% if request.user.has_active_subscription %}
-                                    <a href="{% url 'pages:subscription' %}">Subscription</a>
+                                    <a href="{% url 'pages:subscription' %}" data-show-loader>Subscription</a>
                                 {% else %}
-                                    <a href="{% url 'pages:pricing' %}">Pricing</a>
+                                    <a href="{% url 'pages:pricing' %}" data-show-loader>Pricing</a>
                                 {% endif %}
                             </div>
-                            <form method="post" action="{% url 'account_logout' %}" class="user-menu-form">
+                            <form method="post" action="{% url 'account_logout' %}" class="user-menu-form" data-show-loader>
                                 {% csrf_token %}
                                 <button type="submit" class="button user-menu-button">Sign out</button>
                             </form>
@@ -72,9 +77,9 @@
                                 <span class="muted">Sign in to view practice history and subscription details.</span>
                             </div>
                             <div class="user-menu-links">
-                                <a href="{% url 'pages:pricing' %}">Pricing</a>
+                                <a href="{% url 'pages:pricing' %}" data-show-loader>Pricing</a>
                             </div>
-                            <a href="{% url 'pages:login' %}" class="button user-menu-button">Sign in</a>
+                            <a href="{% url 'pages:login' %}" data-show-loader class="button user-menu-button">Sign in</a>
                         {% endif %}
                     </div>
                 </details>
@@ -106,17 +111,17 @@
                         <div class="footer-col">
                             <h4>Product</h4>
                             <ul>
-                                <li><a href="{% url 'pages:practice' %}">Practice</a></li>
+                                <li><a href="{% url 'pages:practice' %}" data-show-loader>Practice</a></li>
                                 {% if request.user.is_authenticated %}
-                                    <li><a href="{% url 'pages:dashboard' %}">Dashboard</a></li>
+                                    <li><a href="{% url 'pages:dashboard' %}" data-show-loader>Dashboard</a></li>
                                     {% if request.user.has_active_subscription %}
-                                        <li><a href="{% url 'pages:subscription' %}">Subscription</a></li>
+                                        <li><a href="{% url 'pages:subscription' %}" data-show-loader>Subscription</a></li>
                                     {% else %}
-                                        <li><a href="{% url 'pages:pricing' %}">Pricing</a></li>
+                                        <li><a href="{% url 'pages:pricing' %}" data-show-loader>Pricing</a></li>
                                     {% endif %}
                                 {% else %}
-                                    <li><a href="{% url 'pages:pricing' %}">Pricing</a></li>
-                                    <li><a href="{% url 'pages:login' %}">Sign in</a></li>
+                                    <li><a href="{% url 'pages:pricing' %}" data-show-loader>Pricing</a></li>
+                                    <li><a href="{% url 'pages:login' %}" data-show-loader>Sign in</a></li>
                                 {% endif %}
                             </ul>
                         </div>

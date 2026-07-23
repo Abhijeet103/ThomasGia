@@ -37,6 +37,12 @@ class Attempt(models.Model):
     started_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(blank=True, null=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "mode", "assessment_type"]),
+            models.Index(fields=["user", "status", "started_at"]),
+        ]
+
 
 class AttemptSection(models.Model):
     attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, related_name="sections")
@@ -50,6 +56,11 @@ class AttemptSection(models.Model):
     correct_answers_count = models.PositiveIntegerField(default=0)
     incorrect_answers_count = models.PositiveIntegerField(default=0)
     question_payload = models.JSONField(default=dict)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["attempt", "order_index"]),
+        ]
 
 
 class AttemptAnswer(models.Model):

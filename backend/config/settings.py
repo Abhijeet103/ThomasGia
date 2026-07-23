@@ -159,6 +159,8 @@ GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_AUTH_CLIENT_SECRET", "")
 SITE_URL = os.getenv("SITE_URL", "http://127.0.0.1:8000" if IS_DEVELOPMENT else "https://mindmetric.store")
 DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG", "mindmetric")
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:8005/0")
+DJANGO_CACHE_KEY_PREFIX = os.getenv("DJANGO_CACHE_KEY_PREFIX", "mindmetric")
+DJANGO_CACHE_TIMEOUT = int(os.getenv("DJANGO_CACHE_TIMEOUT", "300"))
 FULL_TEST_REDIS_TTL_SECONDS = int(os.getenv("FULL_TEST_REDIS_TTL_SECONDS", "7200"))
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
@@ -184,6 +186,16 @@ SERVER_EMAIL = os.getenv("SERVER_EMAIL", "support@mindmetric.store")
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "support@mindmetric.store")
 SALES_INQUIRY_NOTIFICATION_EMAIL = os.getenv("SALES_INQUIRY_NOTIFICATION_EMAIL", "abhijeet179346@gmail.com")
 EMAIL_NOTIFICATIONS_ENABLED = os.getenv("EMAIL_NOTIFICATIONS_ENABLED", "True").lower() == "true"
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
+        "TIMEOUT": DJANGO_CACHE_TIMEOUT,
+        "KEY_PREFIX": DJANGO_CACHE_KEY_PREFIX,
+        "KEY_FUNCTION": "backend.config.cache.tenant_cache_key",
+    }
+}
 
 LOGGING = {
     "version": 1,

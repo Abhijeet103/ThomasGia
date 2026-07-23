@@ -19,7 +19,7 @@
                 <li>3 full tests</li>
                 <li>Limited section practice</li>
             </ul>
-            <a href="{% url 'pages:practice' %}" class="button-secondary pricing-plan-button">Continue free</a>
+            <a href="{% url 'pages:practice' %}" data-show-loader class="button-secondary pricing-plan-button">Continue free</a>
         </article>
 
         {% for plan in plans %}
@@ -43,7 +43,7 @@
                 {% if request.user.is_authenticated and plan.show_action %}
                     <div class="pricing-plan-actions">
                         {% if paypal_enabled %}
-                            <form method="post" action="{% url 'billing-paypal-checkout' plan.code %}" class="pricing-plan-action">
+                            <form method="post" action="{% url 'billing-paypal-checkout' plan.code %}" class="pricing-plan-action" data-show-loader>
                                 {% csrf_token %}
                                 <button type="submit" class="{% if plan.is_current %}button-secondary button-disabled{% else %}button{% endif %} pricing-plan-button" {% if plan.is_current %}disabled{% endif %}>
                                     {{ plan.button_label }}
@@ -51,7 +51,7 @@
                             </form>
                         {% endif %}
                         {% if stripe_enabled %}
-                            <form method="post" action="{% url 'billing-checkout' plan.code %}" class="pricing-plan-action">
+                            <form method="post" action="{% url 'billing-checkout' plan.code %}" class="pricing-plan-action" data-show-loader>
                                 {% csrf_token %}
                                 <button type="submit" class="button-secondary pricing-plan-button">
                                     {{ plan.button_label }}
@@ -60,7 +60,7 @@
                         {% endif %}
                     </div>
                 {% elif not request.user.is_authenticated %}
-                    <a href="{% url 'pages:login' %}?next={% url 'pages:pricing' %}" class="button pricing-plan-button">{{ plan.button_label }}</a>
+                    <a href="{% url 'pages:login' %}?next={% url 'pages:pricing' %}" data-show-loader class="button pricing-plan-button">{{ plan.button_label }}</a>
                 {% endif %}
             </article>
         {% endfor %}

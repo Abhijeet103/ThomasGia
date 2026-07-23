@@ -1,0 +1,159 @@
+<section class="content-section section-detail-shell">
+    <a
+        href="{% url 'pages:assessment-practice' assessment_slug %}"
+        class="back-link section-detail-back"
+        hx-get="{% url 'pages:assessment-practice' assessment_slug %}"
+        hx-target="#practice-page-target"
+        hx-swap="outerHTML"
+        hx-push-url="true"
+    >
+        ← Back to practice
+    </a>
+    <div class="section-detail-header">
+        <div class="section-detail-heading-group">
+            <h1 class="section-title section-detail-title">{{ section.title|lower|capfirst }}</h1>
+            <p class="section-copy section-detail-copy">{{ section.description }}</p>
+        </div>
+
+        <button
+            type="button"
+            class="section-help-button"
+            data-section-help-toggle
+            aria-expanded="false"
+            aria-controls="section-help-panel"
+        >
+            How this works <span class="section-help-chevron" aria-hidden="true">&#9662;</span>
+        </button>
+    </div>
+
+    <div class="section-detail-overview">
+        <article class="card section-info-card" id="section-help-panel" data-section-help-panel hidden>
+            <p><strong>{{ section.instruction }}</strong></p>
+            {% if section.mode == "test" %}
+                <p class="muted">Timed section: {{ section.time_limit_seconds }} seconds total. There is no per-question timer.</p>
+            {% else %}
+                <p class="muted">Practice mode gives immediate right-or-wrong feedback, with no time limit.</p>
+            {% endif %}
+        </article>
+    </div>
+
+    {% if section.access_error %}
+        <article class="card">
+            <p class="muted">{{ section.access_error }}</p>
+            {% if section.access_requires_upgrade %}
+                <a href="{% url 'pages:pricing' %}" data-show-loader class="button" style="margin-top:12px;width:fit-content;">Upgrade to unlock</a>
+            {% else %}
+                <a href="{% url 'pages:assessment-section-detail' assessment_slug section.key %}?mode=test" data-show-loader class="button" style="margin-top:12px;width:fit-content;">Try again</a>
+            {% endif %}
+        </article>
+    {% elif section.previews %}
+        {{ section.previews|json_script:"section-question-data" }}
+        <section
+            class="card test-player section-player-card"
+            data-test-player
+            data-assessment-type="{{ assessment_slug }}"
+            data-section-key="{{ section.key }}"
+            data-total-questions="{{ section.previews|length }}"
+            data-mode="{{ section.mode }}"
+            data-time-limit-seconds="{{ section.time_limit_seconds }}"
+            data-practice-solved="{{ section.practice_questions_solved }}"
+            data-practice-total="{{ section.practice_question_total }}"
+            data-dashboard-url="{% url 'pages:dashboard' %}"
+            data-return-url="{% url 'pages:assessment-section-detail' assessment_slug section.key %}?mode=practice"
+            data-submit-url="{{ section.submit_url }}"
+            data-end-url="{% if section.attempt_id %}{% url 'attempt-end' section.attempt_id %}{% endif %}"
+            data-progress-url="{% if section.attempt_id %}{% url 'attempt-progress' section.attempt_id %}{% endif %}"
+            data-attempt-id="{{ section.attempt_id|default:'' }}"
+            data-practice-progress-url="{% url 'practice-progress' %}"
+        >
+            <article class="card section-mode-card">
+                <div class="section-mode-switch" role="tablist" aria-label="Mode switch">
+                    <a
+                        href="{% url 'pages:assessment-section-detail' assessment_slug section.key %}?mode=practice"
+                        class="{% if section.mode == 'practice' %}button{% else %}button-secondary{% endif %} section-mode-pill"
+                        hx-get="{% url 'pages:assessment-section-detail' assessment_slug section.key %}?mode=practice"
+                        hx-target="#practice-page-target"
+                        hx-swap="outerHTML"
+                        hx-push-url="true"
+                    >
+                        Practice mode
+                    </a>
+                    <a href="{% url 'pages:assessment-section-detail' assessment_slug section.key %}?mode=test" data-show-loader class="{% if section.mode == 'test' %}button{% else %}button-secondary{% endif %} section-mode-pill">Test mode</a>
+                </div>
+                {% if section.mode == "test" %}
+                    <p class="muted section-mode-copy">Timed section · fullscreen required · one player, card updates in place as you go.</p>
+                {% else %}
+                    <p class="muted section-mode-copy">No time limit · immediate feedback · one player, card updates in place as you go.</p>
+                {% endif %}
+            </article>
+
+            <div class="test-player-topbar section-player-topbar">
+                <p class="muted test-timer" data-test-timer></p>
+                {% if section.mode != "practice" %}
+                    <button type="button" class="button-secondary button-small section-end-test-button" data-test-end hidden>End test</button>
+                {% endif %}
+            </div>
+
+            {% if section.mode == "practice" %}
+                <div class="section-test-progress-wrap">
+                    <p class="muted section-progress-copy" data-practice-progress-copy>{{ section.practice_questions_solved }} of {{ section.practice_question_total }} practice questions solved</p>
+                    <div
+                        class="practice-progress section-test-progress"
+                        role="progressbar"
+                        aria-label="Practice progress"
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow="{{ section.practice_progress_percent }}"
+                    >
+                        <span class="practice-progress-fill section-test-progress-fill" data-test-progress-fill style="width: {{ section.practice_progress_percent }}%;"></span>
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if section.mode == "test" %}
+                <div class="test-stage" data-test-stage="intro">
+                    <p class="muted test-label">Test mode</p>
+                    <h3>Enter fullscreen to begin</h3>
+                    <p class="muted">This timed section starts only after fullscreen mode is enabled.</p>
+                    <button type="button" class="button" data-test-fullscreen-start>Enter fullscreen and start</button>
+                </div>
+            {% else %}
+                <div class="test-stage" data-test-stage="intro">
+                    <p class="muted test-label">Practice mode</p>
+                    <h3>Start practice</h3>
+                    <p class="muted">Begin when ready. We will track your average time per solved question so you can compare your pace with the timed test.</p>
+                    <button type="button" class="button" data-test-practice-start>Start practice</button>
+                </div>
+            {% endif %}
+
+            <div class="test-stage" data-test-stage="context" hidden>
+                <div class="test-context test-context-large test-shell section-question-shell section-stage-box" data-test-context></div>
+            </div>
+
+            <div class="test-stage" data-test-stage="question" hidden>
+                <div class="test-context test-context-large test-shell section-question-shell section-stage-box">
+                    <h3 class="test-question section-question-title" data-test-question></h3>
+                    <div class="answer-options section-answer-options" data-test-options></div>
+                    <p class="section-inline-feedback" data-feedback-banner hidden></p>
+                </div>
+            </div>
+
+            <div class="test-stage" data-test-stage="complete" hidden>
+                <p class="muted test-label">Section complete</p>
+                <h3>You have reached the end of this question set.</h3>
+                <p class="muted" data-complete-summary>You can refresh the page to practice this section again.</p>
+            </div>
+
+            <div class="test-stage" data-test-stage="loading" hidden>
+                <p class="muted test-label">Leaving test mode</p>
+                <h3>Saving your progress and returning to practice...</h3>
+                <p class="muted">Please wait a moment.</p>
+            </div>
+        </section>
+    {% else %}
+        <article class="card">
+            <h3>No questions yet</h3>
+            <p>Generate and export questions to see the test player here.</p>
+        </article>
+    {% endif %}
+</section>

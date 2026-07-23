@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from urllib.parse import urlparse
 
 from django.conf import settings
@@ -8,6 +9,7 @@ from .models import Tenant
 
 
 LOCAL_TENANT_HOSTS = {"127.0.0.1", "localhost", "testserver"}
+_current_tenant_slug: ContextVar[str | None] = ContextVar("current_tenant_slug", default=None)
 
 
 def normalize_host(host: str) -> str:
@@ -21,6 +23,18 @@ def normalize_host(host: str) -> str:
 
 def default_tenant_slug() -> str:
     return getattr(settings, "DEFAULT_TENANT_SLUG", "mindmetric")
+
+
+def set_current_tenant_slug(slug: str | None):
+    return _current_tenant_slug.set(slug)
+
+
+def reset_current_tenant_slug(token) -> None:
+    _current_tenant_slug.reset(token)
+
+
+def get_current_tenant_slug() -> str:
+    return _current_tenant_slug.get() or default_tenant_slug()
 
 
 def default_tenant_domain() -> str:
@@ -53,4 +67,3 @@ def resolve_tenant_from_host(host: str) -> Tenant | None:
         return get_default_tenant()
 
     return None
-

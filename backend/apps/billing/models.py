@@ -24,5 +24,10 @@ class Subscription(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "status", "updated_at"]),
+        ]
+
     def __str__(self) -> str:
         return f"{self.user.email} - {self.plan_code} - {self.status}"
