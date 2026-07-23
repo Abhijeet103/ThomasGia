@@ -6,6 +6,7 @@ import logging
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from django.shortcuts import redirect
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
@@ -163,16 +164,27 @@ class FullTestQuestionView(LoginRequiredMixin, View):
 
 
 class AttemptEndView(LoginRequiredMixin, View):
+    http_method_names = ["get", "post"]
+
+    def _redirect_target(self, request):
+        next_url = request.GET.get("next") or request.POST.get("next") or ""
+        if next_url and url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+            return next_url
+        return "pages:dashboard"
+
     def post(self, request, attempt_id: int):
         attempt = Attempt.objects.filter(id=attempt_id, user=request.user).prefetch_related("sections").first()
         if attempt is None:
-            return redirect("pages:dashboard")
+            return redirect(self._redirect_target(request))
 
         if attempt.status in {AttemptStatus.CREATED, AttemptStatus.IN_PROGRESS}:
             finalize_attempt_from_saved_progress(attempt, reason="manual_end")
             logger.info("Attempt manually ended attempt_id=%s user_id=%s", attempt.id, request.user.id)
 
-        return redirect("pages:dashboard")
+        return redirect(self._redirect_target(request))
+
+    def get(self, request, attempt_id: int):
+        return self.post(request, attempt_id)
 
 
 @method_decorator(csrf_exempt, name="dispatch")

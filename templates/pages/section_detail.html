@@ -34,7 +34,11 @@
     {% if section.access_error %}
         <article class="card">
             <p class="muted">{{ section.access_error }}</p>
-            <a href="{% url 'pages:pricing' %}" class="button" style="margin-top:12px;width:fit-content;">Upgrade to unlock</a>
+            {% if section.access_requires_upgrade %}
+                <a href="{% url 'pages:pricing' %}" class="button" style="margin-top:12px;width:fit-content;">Upgrade to unlock</a>
+            {% else %}
+                <a href="{% url 'pages:assessment-section-detail' assessment_slug section.key %}?mode=test" class="button" style="margin-top:12px;width:fit-content;">Try again</a>
+            {% endif %}
         </article>
     {% elif section.previews %}
         {{ section.previews|json_script:"section-question-data" }}
@@ -49,7 +53,9 @@
             data-practice-solved="{{ section.practice_questions_solved }}"
             data-practice-total="{{ section.practice_question_total }}"
             data-dashboard-url="{% url 'pages:dashboard' %}"
+            data-return-url="{% url 'pages:assessment-section-detail' assessment_slug section.key %}?mode=practice"
             data-submit-url="{{ section.submit_url }}"
+            data-end-url="{% if section.attempt_id %}{% url 'attempt-end' section.attempt_id %}{% endif %}"
             data-progress-url="{% if section.attempt_id %}{% url 'attempt-progress' section.attempt_id %}{% endif %}"
             data-attempt-id="{{ section.attempt_id|default:'' }}"
             data-practice-progress-url="{% url 'practice-progress' %}"
@@ -121,6 +127,12 @@
                 <p class="muted test-label">Section complete</p>
                 <h3>You have reached the end of this question set.</h3>
                 <p class="muted" data-complete-summary>You can refresh the page to practice this section again.</p>
+            </div>
+
+            <div class="test-stage" data-test-stage="loading" hidden>
+                <p class="muted test-label">Leaving test mode</p>
+                <h3>Saving your progress and returning to practice...</h3>
+                <p class="muted">Please wait a moment.</p>
             </div>
         </section>
     {% else %}

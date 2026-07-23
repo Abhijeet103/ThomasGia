@@ -7,6 +7,7 @@ class SaleInquiry(models.Model):
         CONTACTED = "contacted", "Contacted"
         CLOSED = "closed", "Closed"
 
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="sale_inquiries", blank=True, null=True)
     full_name = models.CharField(max_length=255, blank=True)
     email = models.EmailField()
     phone = models.CharField(max_length=64, blank=True)
@@ -24,4 +25,5 @@ class SaleInquiry(models.Model):
         ordering = ("-created_at",)
 
     def __str__(self) -> str:
-        return f"{self.full_name} ({self.email})"
+        label = self.full_name or self.email
+        return f"{label} ({self.email})"

@@ -13,7 +13,9 @@ class UserRole(models.TextChoices):
 class User(AbstractUser):
     username = None
     email = models.EmailField(unique=True)
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="users", blank=True, null=True)
     role = models.CharField(max_length=16, choices=UserRole.choices, default=UserRole.FREE)
+    is_tenant_admin = models.BooleanField(default=False)
     google_sub = models.CharField(max_length=255, blank=True, null=True, unique=True)
     subscription_expires_at = models.DateTimeField(blank=True, null=True)
 
@@ -27,3 +29,7 @@ class User(AbstractUser):
     @property
     def has_active_subscription(self) -> bool:
         return bool(self.subscription_expires_at and self.subscription_expires_at > timezone.now())
+
+    @property
+    def is_platform_admin(self) -> bool:
+        return self.is_superuser

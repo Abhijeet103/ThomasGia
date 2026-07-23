@@ -5,11 +5,79 @@ document.addEventListener("DOMContentLoaded", () => {
     body.classList.add(`role-context-${role}`);
   }
 
+  initPageLoader();
   initSectionHelpToggle();
   initSectionPlayer();
   initFullTestPlayer();
   initModalDialogs();
 });
+
+function initPageLoader() {
+  const loader = document.querySelector("[data-page-loader]");
+  if (!loader) {
+    return;
+  }
+
+  let loading = false;
+
+  const showLoader = () => {
+    if (loading) {
+      return;
+    }
+    loading = true;
+    loader.removeAttribute("hidden");
+    document.body.classList.add("is-loading");
+  };
+
+  const hideLoader = () => {
+    loading = false;
+    loader.setAttribute("hidden", "");
+    document.body.classList.remove("is-loading");
+  };
+
+  const isInternalNavigableLink = (link) => {
+    const href = link.getAttribute("href");
+    if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) {
+      return false;
+    }
+    if (link.target === "_blank" || link.hasAttribute("download") || link.dataset.modalOpen) {
+      return false;
+    }
+    const url = new URL(href, window.location.href);
+    if (url.origin !== window.location.origin) {
+      return false;
+    }
+    return url.href !== window.location.href;
+  };
+
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("a");
+    if (!link || event.defaultPrevented) {
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    if (!isInternalNavigableLink(link)) {
+      return;
+    }
+    showLoader();
+  });
+
+  document.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement) || event.defaultPrevented) {
+      return;
+    }
+    if (form.dataset.noLoader !== undefined) {
+      return;
+    }
+    showLoader();
+  });
+
+  window.addEventListener("pageshow", hideLoader);
+  window.addEventListener("beforeunload", showLoader);
+}
 
 function initModalDialogs() {
   const modals = Array.from(document.querySelectorAll("[data-modal]"));
@@ -126,9 +194,12 @@ function initSectionPlayer() {
   const questionStage = player.querySelector('[data-test-stage="question"]');
   const completeStage = player.querySelector('[data-test-stage="complete"]');
   const introStage = player.querySelector('[data-test-stage="intro"]');
+  const loadingStage = player.querySelector('[data-test-stage="loading"]');
   const fullscreenStartButton = player.querySelector("[data-test-fullscreen-start]");
   const practiceStartButton = player.querySelector("[data-test-practice-start]");
   const endTestButton = player.querySelector("[data-test-end]");
+  const returnUrl = player.dataset.returnUrl || player.dataset.dashboardUrl || "";
+  const endUrl = player.dataset.endUrl || "";
 
   const persistTestProgress = async () => {
     if (mode !== "test" || !player.dataset.progressUrl) {
@@ -165,7 +236,7 @@ function initSectionPlayer() {
   };
 
   const showStage = (stage) => {
-    [introStage, contextStage, questionStage, completeStage].forEach((node) => {
+    [introStage, contextStage, questionStage, completeStage, loadingStage].forEach((node) => {
       if (!node) return;
       if (node === stage) {
         node.removeAttribute("hidden");
@@ -301,6 +372,29 @@ function initSectionPlayer() {
     showStage(completeStage);
   };
 
+  const redirectToPracticeAfterEnd = async () => {
+    const target = endUrl ? (returnUrl ? `${endUrl}?next=${encodeURIComponent(returnUrl)}` : endUrl) : returnUrl;
+    if (!target) {
+      finishPlayer();
+      return;
+    }
+    showStage(loadingStage);
+    hideFeedback();
+    if (timerInterval) {
+      window.clearInterval(timerInterval);
+    }
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    } catch (error) {
+      // Even if fullscreen exit fails, continue to redirect away from the player.
+    }
+    window.setTimeout(() => {
+      window.location.replace(target);
+    }, 180);
+  };
+
   const renderQuestion = () => {
     const item = questions[currentIndex];
     if (!item) {
@@ -387,7 +481,7 @@ function initSectionPlayer() {
 
   if (mode === "test" && timerEl && remainingSeconds > 0) {
     endTestButton?.addEventListener("click", () => {
-      finishPlayer();
+      redirectToPracticeAfterEnd();
     });
     document.addEventListener("fullscreenchange", syncFullscreenTestUI);
     fullscreenStartButton?.addEventListener("click", async () => {
@@ -484,6 +578,7 @@ function initFullTestPlayer() {
   const startButton = player.querySelector("[data-full-start]");
   const fullscreenStartButton = player.querySelector("[data-full-fullscreen-start]");
   const nextPhaseButton = player.querySelector("[data-full-next-phase]");
+  const skipPracticeButton = player.querySelector("[data-full-skip-practice]");
   const endTestButton = player.querySelector("[data-full-end-test]");
 
   const persistFullTestProgress = async () => {
@@ -512,6 +607,14 @@ function initFullTestPlayer() {
       endTestButton.setAttribute("hidden", "");
     }
   };
+  const updateSkipPracticeButton = () => {
+    if (!skipPracticeButton) return;
+    if (phase === "practice") {
+      skipPracticeButton.removeAttribute("hidden");
+    } else {
+      skipPracticeButton.setAttribute("hidden", "");
+    }
+  };
   const sectionCompleteLabelEl = player.querySelector("[data-full-section-complete-label]");
   const sectionCompleteTitleEl = player.querySelector("[data-full-section-complete-title]");
   const sectionCompleteCopyEl = player.querySelector("[data-full-section-complete-copy]");
@@ -531,6 +634,7 @@ function initFullTestPlayer() {
     phase === "practice" ? getCurrentSection()?.practice_count || 0 : getCurrentSection()?.test_count || 0;
 
   const showStage = (stage) => {
+    updateSkipPracticeButton();
     allStages.forEach((node) => {
       if (!node) return;
       if (node === stage) {
@@ -717,6 +821,7 @@ function initFullTestPlayer() {
     if (phase === "practice") {
       phase = "test-intro";
       updateEndTestButton();
+      updateSkipPracticeButton();
       if (sectionCompleteLabelEl) sectionCompleteLabelEl.textContent = "Practice complete";
       if (sectionCompleteTitleEl) sectionCompleteTitleEl.textContent = `${section.title} practice complete`;
       if (sectionCompleteCopyEl) sectionCompleteCopyEl.textContent = "Next, start the timed test for this section.";
@@ -781,7 +886,17 @@ function initFullTestPlayer() {
       return;
     }
     updateEndTestButton();
+    updateSkipPracticeButton();
     renderIntro();
+  });
+
+  skipPracticeButton?.addEventListener("click", () => {
+    if (phase !== "practice") {
+      return;
+    }
+    hideFeedback();
+    questionIndex += 1;
+    renderQuestion();
   });
 
   contextStage?.addEventListener("click", () => {

@@ -79,6 +79,7 @@ def create_attempt(
 
     attempt = Attempt.objects.create(
         user=user,
+        tenant=user.tenant,
         assessment_type=assessment_type,
         mode=mode,
         status=AttemptStatus.IN_PROGRESS,
@@ -98,6 +99,7 @@ def create_attempt(
         question_target = get_time_limit_seconds(section_key) if mode == AttemptMode.SECTION else 5
         section_record = AttemptSection.objects.create(
             attempt=attempt,
+            tenant=attempt.tenant,
             section_type=section_key,
             order_index=index,
             difficulty=difficulty,
@@ -146,6 +148,7 @@ def get_or_create_full_test_attempt(user: User, assessment_type: str = ASSESSMEN
     full_test_practice_count = assessment_config["full_test_practice_count"]
     attempt = Attempt.objects.create(
         user=user,
+        tenant=user.tenant,
         assessment_type=assessment_type,
         mode=AttemptMode.FULL_TEST,
         status=AttemptStatus.IN_PROGRESS,
@@ -170,6 +173,7 @@ def get_or_create_full_test_attempt(user: User, assessment_type: str = ASSESSMEN
         if section is None:
             section = AttemptSection.objects.create(
                 attempt=attempt,
+                tenant=attempt.tenant,
                 section_type=section_key,
                 order_index=index,
                 difficulty="mixed",
@@ -491,6 +495,7 @@ def record_practice_progress(
 ) -> SectionProgress:
     resolved_assessment_type = assessment_type or get_module_assessment_type(section_type)
     progress, _ = SectionProgress.objects.get_or_create(
+        tenant=user.tenant,
         user=user,
         assessment_type=resolved_assessment_type,
         section_type=section_type,
@@ -509,6 +514,7 @@ def record_practice_progress(
 def record_test_progress(user: User, section_type: str, score: float, assessment_type: str | None = None) -> SectionProgress:
     resolved_assessment_type = assessment_type or get_module_assessment_type(section_type)
     progress, _ = SectionProgress.objects.get_or_create(
+        tenant=user.tenant,
         user=user,
         assessment_type=resolved_assessment_type,
         section_type=section_type,
@@ -638,6 +644,7 @@ def recompute_section_progress_for_user(user: User, assessment_type: str | None 
     updates = 0
     for progress in progress_qs:
         relevant_sections = AttemptSection.objects.filter(
+            tenant=user.tenant,
             attempt__user=user,
             attempt__status=AttemptStatus.COMPLETED,
             attempt__assessment_type=progress.assessment_type,

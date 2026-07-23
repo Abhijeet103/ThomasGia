@@ -50,7 +50,7 @@
         </div>
 
         {% if checkout_state == "processing" %}
-            <p class="billing-note">Stripe payment returned successfully. We are waiting for backend confirmation before finalizing access.</p>
+            <p class="billing-note">Payment returned successfully. We are waiting for backend confirmation before finalizing access.</p>
         {% elif checkout_state == "cancelled" %}
             <p class="billing-note">Checkout was cancelled. You can choose another plan any time.</p>
         {% endif %}
@@ -71,12 +71,24 @@
                         <span>{{ plan.extension_copy }}</span>
                     </div>
                     {% if plan.show_action %}
-                        <form method="post" action="{% url 'billing-checkout' plan.code %}" class="subscription-extension-action">
-                            {% csrf_token %}
-                            <button type="submit" class="button">
-                                {{ plan.extension_title }}
-                            </button>
-                        </form>
+                        <div class="subscription-extension-actions">
+                            {% if paypal_enabled %}
+                                <form method="post" action="{% url 'billing-paypal-checkout' plan.code %}" class="subscription-extension-action">
+                                    {% csrf_token %}
+                                    <button type="submit" class="button">
+                                        {{ plan.extension_title }}
+                                    </button>
+                                </form>
+                            {% endif %}
+                            {% if stripe_enabled %}
+                                <form method="post" action="{% url 'billing-checkout' plan.code %}" class="subscription-extension-action">
+                                    {% csrf_token %}
+                                    <button type="submit" class="button-secondary">
+                                        {{ plan.extension_title }}
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
                     {% endif %}
                 </article>
             {% endfor %}

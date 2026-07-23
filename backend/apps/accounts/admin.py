@@ -12,6 +12,7 @@ from backend.apps.assessments.models import Attempt, AttemptStatus, SectionProgr
 from backend.apps.assessments.services import recompute_section_progress_for_user
 from backend.apps.billing.models import Subscription, SubscriptionStatus
 from backend.apps.billing.services import calculate_expiry, sync_user_subscription_access
+from backend.apps.tenants.utils import get_default_tenant
 
 from .models import User, UserRole
 
@@ -24,6 +25,7 @@ def _activate_manual_subscription_for_user(user: User, plan_code: str) -> None:
         provider="admin",
         status=SubscriptionStatus.ACTIVE,
         defaults={
+            "tenant": user.tenant,
             "plan_code": plan_code,
             "provider_customer_id": "",
             "provider_subscription_id": f"admin-{user.id}-{plan_code}",
@@ -40,7 +42,7 @@ def _activate_manual_subscription_for_user(user: User, plan_code: str) -> None:
 class UserAdmin(DjangoUserAdmin):
     model = User
     ordering = ("email",)
-    list_display = ("email", "first_name", "last_name", "role", "subscription_expires_at", "is_staff")
+    list_display = ("email", "tenant", "first_name", "last_name", "role", "is_tenant_admin", "subscription_expires_at", "is_staff")
     search_fields = ("email", "first_name", "last_name")
     actions = (
         "mark_selected_users_as_paid",
@@ -54,8 +56,8 @@ class UserAdmin(DjangoUserAdmin):
     )
     fieldsets = (
         (None, {"fields": ("email", "password")}),
-        ("Personal info", {"fields": ("first_name", "last_name", "role", "google_sub", "subscription_expires_at")}),
-        ("Permissions", {"fields": ("is_active", "is_staff", "is_superuser", "groups", "user_permissions")}),
+        ("Personal info", {"fields": ("tenant", "first_name", "last_name", "role", "google_sub", "subscription_expires_at")}),
+        ("Permissions", {"fields": ("is_active", "is_staff", "is_tenant_admin", "is_superuser", "groups", "user_permissions")}),
         ("Important dates", {"fields": ("last_login", "date_joined")}),
     )
     add_fieldsets = (
@@ -63,10 +65,48 @@ class UserAdmin(DjangoUserAdmin):
             None,
             {
                 "classes": ("wide",),
-                "fields": ("email", "password1", "password2", "role", "is_staff", "is_superuser"),
+                "fields": ("tenant", "email", "password1", "password2", "role", "is_staff", "is_tenant_admin", "is_superuser"),
             },
         ),
     )
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        if request.user.is_superuser:
+            return queryset
+        if request.user.tenant_id:
+            return queryset.filter(tenant=request.user.tenant)
+        return queryset.none()
+
+    def get_fieldsets(self, request, obj=None):
+        if request.user.is_superuser:
+            return self.fieldsets
+        return (
+            (None, {"fields": ("email", "password")}),
+            ("Personal info", {"fields": ("tenant", "first_name", "last_name", "role", "google_sub", "subscription_expires_at")}),
+            ("Permissions", {"fields": ("is_active", "is_staff", "is_tenant_admin")}),
+            ("Important dates", {"fields": ("last_login", "date_joined")}),
+        )
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly = list(super().get_readonly_fields(request, obj))
+        if not request.user.is_superuser:
+            readonly.append("tenant")
+        return readonly
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "tenant" and not request.user.is_superuser and request.user.tenant_id:
+            kwargs["queryset"] = db_field.remote_field.model.objects.filter(id=request.user.tenant_id)
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def save_model(self, request, obj, form, change):
+        if obj.tenant_id is None:
+            obj.tenant = getattr(request.user, "tenant", None) or get_default_tenant()
+        if not request.user.is_superuser:
+            obj.tenant = getattr(request.user, "tenant", None) or obj.tenant
+            obj.is_superuser = False
+            obj.is_staff = bool(obj.is_staff or obj.is_tenant_admin)
+        super().save_model(request, obj, form, change)
 
     @admin.action(description="Mark selected users as paid")
     def mark_selected_users_as_paid(self, request, queryset):
@@ -95,6 +135,7 @@ class UserAdmin(DjangoUserAdmin):
                 user=user,
                 provider="admin",
                 defaults={
+                    "tenant": user.tenant,
                     "plan_code": "monthly",
                     "status": SubscriptionStatus.ACTIVE,
                     "provider_subscription_id": f"admin-{user.id}-monthly",
@@ -135,7 +176,7 @@ class UserAdmin(DjangoUserAdmin):
 
     @admin.action(description="Promote to admin access")
     def promote_to_admin_access(self, request, queryset):
-        updated = queryset.update(is_staff=True)
+        updated = queryset.update(is_staff=True, is_tenant_admin=True)
         self.message_user(request, f"Granted admin-panel access to {updated} user(s).", level=messages.SUCCESS)
 
     @admin.action(description="Export user results as CSV")

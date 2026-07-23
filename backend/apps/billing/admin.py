@@ -8,6 +8,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 
 from backend.apps.accounts.models import UserRole
+from backend.apps.tenants.admin_mixins import TenantScopedAdminMixin
 
 from .models import Subscription, SubscriptionStatus
 from .services import calculate_expiry, sync_user_subscription_access
@@ -33,8 +34,8 @@ def _ensure_manual_subscription(subscription: Subscription, plan_code: str, extr
 
 
 @admin.register(Subscription)
-class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = ("user", "provider", "plan_code", "status", "current_period_end")
+class SubscriptionAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    list_display = ("tenant", "user", "provider", "plan_code", "status", "current_period_end")
     list_filter = ("provider", "status", "plan_code")
     search_fields = ("user__email", "provider_customer_id", "provider_subscription_id")
     actions = (

@@ -34,6 +34,60 @@ body {
   font-family: var(--font-body);
 }
 
+body.is-loading {
+  cursor: progress;
+}
+
+body.is-loading a,
+body.is-loading button {
+  cursor: progress;
+}
+
+.page-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(247, 243, 234, 0.62);
+  backdrop-filter: blur(3px);
+}
+
+.page-loader-panel {
+  min-width: 180px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border: 1px solid rgba(216, 207, 190, 0.92);
+  border-radius: 999px;
+  background: rgba(255, 250, 242, 0.98);
+  box-shadow: 0 16px 44px rgba(27, 26, 24, 0.12);
+}
+
+.page-loader-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(15, 118, 110, 0.18);
+  border-top-color: var(--brand);
+  border-radius: 999px;
+  animation: page-loader-spin 0.8s linear infinite;
+}
+
+.page-loader-text {
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 0.96rem;
+  font-weight: 600;
+}
+
+@keyframes page-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -834,8 +888,14 @@ main {
   font-weight: 700;
 }
 
-.pricing-plan-action {
+.pricing-plan-actions {
   margin-top: auto;
+  display: grid;
+  gap: 10px;
+}
+
+.pricing-plan-action {
+  margin-top: 0;
 }
 
 .pricing-plan-action-empty {
@@ -1156,6 +1216,12 @@ main {
 .subscription-extension-action .button,
 .subscription-extension-action .button-secondary {
   min-width: 160px;
+}
+
+.subscription-extension-actions {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
 }
 
 .modal-shell {

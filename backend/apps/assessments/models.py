@@ -29,6 +29,7 @@ class SectionType(models.TextChoices):
 
 class Attempt(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="attempts")
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="attempts", blank=True, null=True)
     assessment_type = models.CharField(max_length=24, default="prepgia")
     mode = models.CharField(max_length=24, choices=AttemptMode.choices)
     status = models.CharField(max_length=24, choices=AttemptStatus.choices, default=AttemptStatus.CREATED)
@@ -39,6 +40,7 @@ class Attempt(models.Model):
 
 class AttemptSection(models.Model):
     attempt = models.ForeignKey(Attempt, on_delete=models.CASCADE, related_name="sections")
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="attempt_sections", blank=True, null=True)
     section_type = models.CharField(max_length=32, choices=SectionType.choices)
     order_index = models.PositiveIntegerField(default=0)
     difficulty = models.CharField(max_length=16, default="easy")
@@ -52,6 +54,7 @@ class AttemptSection(models.Model):
 
 class AttemptAnswer(models.Model):
     attempt_section = models.ForeignKey(AttemptSection, on_delete=models.CASCADE, related_name="answers")
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="attempt_answers", blank=True, null=True)
     question_index = models.PositiveIntegerField()
     user_answer = models.JSONField(default=dict, blank=True)
     is_correct = models.BooleanField(blank=True, null=True)
@@ -61,6 +64,7 @@ class AttemptAnswer(models.Model):
 
 class SectionProgress(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="section_progress")
+    tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="section_progress_rows", blank=True, null=True)
     assessment_type = models.CharField(max_length=24, default="prepgia")
     section_type = models.CharField(max_length=32, choices=SectionType.choices)
     practice_questions_solved = models.PositiveIntegerField(default=0)
@@ -69,7 +73,7 @@ class SectionProgress(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ("user", "assessment_type", "section_type")
+        unique_together = ("tenant", "user", "assessment_type", "section_type")
 
 
 class WordMeaningItem(models.Model):

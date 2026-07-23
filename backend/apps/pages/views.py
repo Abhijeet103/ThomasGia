@@ -18,7 +18,13 @@ from django.db.models import Prefetch
 from django.views import View
 from django.views.generic.edit import FormView
 
-from backend.apps.billing.services import build_plan_cards, sync_user_subscription_access
+from backend.apps.billing.services import (
+    build_plan_cards,
+    paypal_is_configured,
+    stripe_is_configured,
+    sync_user_subscription_access,
+)
+from backend.apps.tenants.utils import get_default_tenant
 from backend.apps.assessments.config import (
     ASSESSMENT_CCAT,
     ASSESSMENT_PREPGIA,
@@ -198,6 +204,8 @@ class PricingPageView(TemplateView):
                 "meta_description": "View free and paid plans for MindMetric practice tests.",
                 "active_subscription": active_subscription,
                 "plans": _visible_frontend_plans(self.request.user, active_subscription),
+                "paypal_enabled": paypal_is_configured(),
+                "stripe_enabled": stripe_is_configured(),
                 "contact_form": SaleInquiryForm(initial={**_contact_form_initial(self.request, "pricing"), "next": self.request.path}),
                 "contact_sales_open_url": _contact_sales_open_url(self.request),
                 "contact_sales_close_url": _contact_sales_close_url(self.request),
@@ -241,6 +249,8 @@ class SubscriptionPageView(LoginRequiredMixin, TemplateView):
                 "subscription_expires_at": self.request.user.subscription_expires_at,
                 "plans": visible_plans,
                 "extension_cards": extension_cards,
+                "paypal_enabled": paypal_is_configured(),
+                "stripe_enabled": stripe_is_configured(),
                 "checkout_state": self.request.GET.get("checkout", ""),
                 "contact_form": SaleInquiryForm(initial={**_contact_form_initial(self.request, "subscription"), "next": self.request.path}),
                 "contact_sales_open_url": _contact_sales_open_url(self.request),
@@ -259,6 +269,11 @@ class ContactInquiryCreateView(FormView):
     http_method_names = ["post"]
 
     def form_valid(self, form):
+        form.instance.tenant = (
+            getattr(self.request, "tenant", None)
+            or getattr(self.request.user, "tenant", None)
+            or get_default_tenant()
+        )
         inquiry = form.save()
         logger.info("Saved sales inquiry id=%s source=%s email=%s", inquiry.id, inquiry.source_page, inquiry.email)
         try:
@@ -438,6 +453,7 @@ class SectionDetailPageView(TemplateView):
         section_attempt_id = None
         section_submit_url = ""
         section_access_error = ""
+        section_access_requires_upgrade = False
         practice_question_total = max(1, get_time_limit_seconds(section_type) // 2)
         practice_questions_solved = 0
         if self.request.user.is_authenticated:
@@ -457,6 +473,7 @@ class SectionDetailPageView(TemplateView):
                 section_submit_url = f"/api/tests/section-tests/{section_attempt_id}/submit/" if section_attempt_id else ""
             except PermissionError as exc:
                 section_access_error = str(exc)
+                section_access_requires_upgrade = True
                 previews = []
             except FullTestSessionError:
                 logger.exception("Section test setup failed because the active Redis-backed session was unavailable.")
@@ -485,6 +502,7 @@ class SectionDetailPageView(TemplateView):
                     "attempt_id": section_attempt_id,
                     "submit_url": section_submit_url,
                     "access_error": section_access_error,
+                    "access_requires_upgrade": section_access_requires_upgrade,
                 },
             }
         )

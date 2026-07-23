@@ -7,6 +7,8 @@ from django.contrib import admin, messages
 from django.http import HttpResponse
 from django.utils import timezone
 
+from backend.apps.tenants.admin_mixins import TenantScopedAdminMixin
+
 from .models import Attempt, AttemptAnswer, AttemptSection, SectionProgress, WordMeaningItem
 from .services import (
     clear_attempt_runtime_state,
@@ -18,8 +20,8 @@ from .services import (
 
 
 @admin.register(Attempt)
-class AttemptAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "assessment_type", "mode", "status", "overall_adjusted_score", "started_at", "completed_at")
+class AttemptAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    list_display = ("id", "tenant", "user", "assessment_type", "mode", "status", "overall_adjusted_score", "started_at", "completed_at")
     list_filter = ("assessment_type", "mode", "status")
     search_fields = ("user__email",)
     actions = (
@@ -103,9 +105,10 @@ class AttemptAdmin(admin.ModelAdmin):
 
 
 @admin.register(AttemptSection)
-class AttemptSectionAdmin(admin.ModelAdmin):
+class AttemptSectionAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
     list_display = (
         "id",
+        "tenant",
         "attempt",
         "section_type",
         "question_count",
@@ -118,15 +121,16 @@ class AttemptSectionAdmin(admin.ModelAdmin):
 
 
 @admin.register(AttemptAnswer)
-class AttemptAnswerAdmin(admin.ModelAdmin):
-    list_display = ("id", "attempt_section", "question_index", "is_correct", "submitted_at")
+class AttemptAnswerAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    list_display = ("id", "tenant", "attempt_section", "question_index", "is_correct", "submitted_at")
     list_filter = ("is_correct", "attempt_section__section_type")
     search_fields = ("attempt_section__attempt__user__email", "attempt_section__attempt__id")
 
 
 @admin.register(SectionProgress)
-class SectionProgressAdmin(admin.ModelAdmin):
+class SectionProgressAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
     list_display = (
+        "tenant",
         "user",
         "assessment_type",
         "section_type",
@@ -157,3 +161,18 @@ class WordMeaningItemAdmin(admin.ModelAdmin):
     list_display = ("id", "pair_word_1", "pair_word_2", "odd_word", "relationship_type", "difficulty", "is_active")
     list_filter = ("difficulty", "relationship_type", "is_active")
     search_fields = ("pair_word_1", "pair_word_2", "odd_word")
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_add_permission(self, request):
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
