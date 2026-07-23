@@ -7,7 +7,7 @@ Type=simple
 User=root
 WorkingDirectory=/home/ec2-user/ThomasGia
 Environment="PATH=/home/ec2-user/ThomasGia/.venv/bin"
-ExecStart=/home/ec2-user/ThomasGia/.venv/bin/uvicorn backend.config.asgi:application --host 127.0.0.1 --port 8000 --workers 3
+ExecStart=/home/ec2-user/ThomasGia/.venv/bin/uvicorn backend.config.asgi:application --host 127.0.0.1 --port 8000 --workers 1
 Restart=always
 RestartSec=3
 

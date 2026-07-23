@@ -1,9 +1,11 @@
 :root {
-  --bg: #f7f3ea;
+  --bg: #f4efe3;
   --surface: #fffaf2;
+  --frame-bg: #efe6d6;
   --ink: #1b1a18;
   --muted: #5d5a54;
   --line: #d8cfbe;
+  --frame-line: rgba(216, 207, 190, 0.92);
   --brand: #0f766e;
   --brand-dark: #134e4a;
   --accent: #c2410c;
@@ -51,7 +53,7 @@ body.is-loading button {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(247, 243, 234, 0.62);
+  background: rgba(244, 239, 227, 0.62);
   backdrop-filter: blur(0.01px);
 }
 
@@ -133,7 +135,10 @@ main {
 
 .topbar {
   justify-content: space-between;
-  padding: 24px 0 26px;
+  padding: 24px 20px 26px;
+  margin: 0 calc(-50vw + 50%) 0;
+  background: var(--frame-bg);
+  border-bottom: 1px solid var(--frame-line);
 }
 
 .brand {
@@ -2370,8 +2375,8 @@ body.has-open-modal {
   width: 100vw;
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
-  border-top: 1px solid rgba(216, 207, 190, 0.9);
-  background: #f4efe2;
+  border-top: 1px solid var(--frame-line);
+  background: var(--frame-bg);
   color: var(--muted);
   font-size: 0.96rem;
 }

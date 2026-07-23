@@ -94,18 +94,25 @@ def _database_config_from_env():
     scheme = parsed.scheme.lower()
 
     if scheme in {"postgres", "postgresql", "pgsql"}:
+        hostname = parsed.hostname or ""
+        conn_max_age = int(os.getenv("DATABASE_CONN_MAX_AGE", "0"))
+        # Supabase's session pool on the shared pooler is small. Keeping Django
+        # connections persistent there quickly exhausts the pool across workers.
+        if hostname.endswith("pooler.supabase.com"):
+            conn_max_age = 0
         return {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": parsed.path.lstrip("/"),
             "USER": unquote(parsed.username or ""),
             "PASSWORD": unquote(parsed.password or ""),
-            "HOST": parsed.hostname or "",
+            "HOST": hostname,
             "PORT": str(parsed.port or "5432"),
-            # Keep Postgres connections short-lived by default so Supabase's
-            # small session pool doesn't get exhausted by idle Django workers.
-            "CONN_MAX_AGE": int(os.getenv("DATABASE_CONN_MAX_AGE", "0")),
+            "CONN_MAX_AGE": conn_max_age,
             "CONN_HEALTH_CHECKS": os.getenv("DATABASE_CONN_HEALTH_CHECKS", "True").lower() == "true",
-            "OPTIONS": {"sslmode": os.getenv("DATABASE_SSLMODE", "require")},
+            "OPTIONS": {
+                "sslmode": os.getenv("DATABASE_SSLMODE", "require"),
+                "connect_timeout": int(os.getenv("DATABASE_CONNECT_TIMEOUT", "10")),
+            },
         }
 
     if scheme == "sqlite":
@@ -157,6 +164,7 @@ SOCIALACCOUNT_LOGIN_ON_GET = True
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_AUTH_CLIENT_ID", "")
 GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_AUTH_CLIENT_SECRET", "")
 SITE_URL = os.getenv("SITE_URL", "http://127.0.0.1:8000" if IS_DEVELOPMENT else "https://mindmetric.store")
+DATABASE_ADMIN_URL = os.getenv("DATABASE_ADMIN_URL", "").strip()
 DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG", "mindmetric")
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:8005/0")
 DJANGO_CACHE_KEY_PREFIX = os.getenv("DJANGO_CACHE_KEY_PREFIX", "mindmetric")
