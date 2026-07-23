@@ -72,14 +72,12 @@
                     </div>
                     {% if plan.show_action %}
                         <div class="subscription-extension-actions">
-                            {% if paypal_enabled %}
-                                <form method="post" action="{% url 'billing-paypal-checkout' plan.code %}" class="subscription-extension-action" data-show-loader>
-                                    {% csrf_token %}
-                                    <button type="submit" class="button">
-                                        {{ plan.extension_title }}
-                                    </button>
-                                </form>
-                            {% endif %}
+                            <form method="post" action="{% url 'billing-paypal-checkout' plan.code %}" class="subscription-extension-action" data-show-loader>
+                                {% csrf_token %}
+                                <button type="submit" class="button">
+                                    {{ plan.extension_title }}
+                                </button>
+                            </form>
                             {% if stripe_enabled %}
                                 <form method="post" action="{% url 'billing-checkout' plan.code %}" class="subscription-extension-action" data-show-loader>
                                     {% csrf_token %}
