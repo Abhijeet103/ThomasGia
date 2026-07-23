@@ -42,14 +42,12 @@
                 </ul>
                 {% if request.user.is_authenticated and plan.show_action %}
                     <div class="pricing-plan-actions">
-                        {% if paypal_enabled %}
-                            <form method="post" action="{% url 'billing-paypal-checkout' plan.code %}" class="pricing-plan-action" data-show-loader>
-                                {% csrf_token %}
-                                <button type="submit" class="{% if plan.is_current %}button-secondary button-disabled{% else %}button{% endif %} pricing-plan-button" {% if plan.is_current %}disabled{% endif %}>
-                                    {{ plan.button_label }}
-                                </button>
-                            </form>
-                        {% endif %}
+                        <form method="post" action="{% url 'billing-paypal-checkout' plan.code %}" class="pricing-plan-action" data-show-loader>
+                            {% csrf_token %}
+                            <button type="submit" class="{% if plan.is_current %}button-secondary button-disabled{% else %}button{% endif %} pricing-plan-button" {% if plan.is_current %}disabled{% endif %}>
+                                {{ plan.button_label }}
+                            </button>
+                        </form>
                         {% if stripe_enabled %}
                             <form method="post" action="{% url 'billing-checkout' plan.code %}" class="pricing-plan-action" data-show-loader>
                                 {% csrf_token %}

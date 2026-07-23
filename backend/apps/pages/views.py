@@ -754,7 +754,7 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
                 "attempts": recent_attempt_rows,
                 "full_test_rows": full_test_rows,
                 "section_score_rows": section_score_rows,
-                "expired_attempt_count": expired_count,
+                "expired_attempt_count": 0,
                 "assessment_cards": assessment_cards,
                 "assessment_estimates": assessment_estimates,
                 "chart_data": chart_data,
