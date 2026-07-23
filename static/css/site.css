@@ -1,16 +1,25 @@
 :root {
   --bg: #f4efe3;
-  --surface: #fffaf2;
-  --frame-bg: #efe6d6;
-  --ink: #1b1a18;
-  --muted: #5d5a54;
-  --line: #d8cfbe;
-  --frame-line: rgba(216, 207, 190, 0.92);
-  --brand: #0f766e;
-  --brand-dark: #134e4a;
-  --accent: #c2410c;
-  --accent-color: var(--brand);
-  --shadow: 0 18px 60px rgba(27, 26, 24, 0.08);
+  --chrome-bg: #f3ece2;
+  --card-bg: #ffffff;
+  --ink: #1f2937;
+  --ink-muted: #726c5c;
+  --teal: #2e7d6b;
+  --teal-dark: #22604f;
+  --teal-tint: #e1efea;
+  --orange: #d68a2c;
+  --orange-tint: #fbf0de;
+  --border: #e7ded2;
+  --surface: var(--card-bg);
+  --frame-bg: var(--chrome-bg);
+  --muted: var(--ink-muted);
+  --line: var(--border);
+  --frame-line: var(--border);
+  --brand: var(--teal);
+  --brand-dark: var(--teal-dark);
+  --accent: var(--orange);
+  --accent-color: var(--teal);
+  --shadow: 0 18px 60px rgba(31, 41, 55, 0.08);
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
   --font-body: "Inter", Arial, Helvetica, sans-serif;
 }
@@ -29,10 +38,7 @@ html {
 
 body {
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 32%),
-    radial-gradient(circle at right 10%, rgba(194, 65, 12, 0.1), transparent 24%),
-    var(--bg);
+  background: var(--bg);
   color: var(--ink);
   font-family: var(--font-body);
 }
@@ -135,10 +141,15 @@ main {
 
 .topbar {
   justify-content: space-between;
-  padding: 24px 20px 26px;
+  min-height: 72px;
+  padding: 0 20px;
   margin: 0 calc(-50vw + 50%) 0;
   background: var(--frame-bg);
   border-bottom: 1px solid var(--frame-line);
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  backdrop-filter: blur(8px);
 }
 
 .brand {
@@ -171,9 +182,9 @@ main {
 }
 
 .nav-links a.is-active {
-  background: #2d6a5f;
-  border: 1px solid #2d6a5f;
-  color: #fff;
+  background: var(--teal);
+  border: 1px solid var(--teal);
+  color: var(--card-bg);
   font-weight: 700;
 }
 
@@ -203,9 +214,9 @@ main {
 }
 
 .nav-cta.is-active {
-  background: #2d6a5f;
-  border-color: #2d6a5f;
-  color: #fff;
+  background: var(--teal);
+  border-color: var(--teal);
+  color: var(--card-bg);
   font-weight: 700;
 }
 
@@ -237,8 +248,8 @@ main {
   justify-content: center;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 250, 242, 0.96);
-  color: #000;
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--ink);
 }
 
 .user-menu-avatar {
@@ -312,7 +323,7 @@ main {
 
 .hero-card,
 .card {
-  background: rgba(255, 250, 242, 0.9);
+  background: rgba(255, 255, 255, 0.94);
   border: 1px solid var(--line);
   border-radius: 28px;
   box-shadow: var(--shadow);
@@ -1790,8 +1801,8 @@ body.has-open-modal {
 }
 
 .practice-section-card:hover {
-  border-color: #d9a441;
-  box-shadow: 0 16px 34px rgba(217, 164, 65, 0.12);
+  border-color: var(--orange);
+  box-shadow: 0 16px 34px rgba(214, 138, 44, 0.12);
 }
 
 .practice-track-card {
@@ -1800,19 +1811,19 @@ body.has-open-modal {
 }
 
 .practice-track-card--live {
-  background: rgba(255, 250, 242, 0.96);
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .practice-track-card--upcoming {
   overflow: hidden;
-  background: rgba(255, 249, 238, 0.85);
+  background: rgba(255, 255, 255, 0.85);
   border-style: dashed;
-  border-color: #e1d6bd;
+  border-color: var(--border);
 }
 
 .practice-track-card--upcoming:hover {
-  border-color: #d8b07a;
-  box-shadow: 0 16px 34px rgba(181, 98, 47, 0.08);
+  border-color: var(--orange);
+  box-shadow: 0 16px 34px rgba(214, 138, 44, 0.08);
 }
 
 .practice-track-pattern {
@@ -1823,8 +1834,8 @@ body.has-open-modal {
   opacity: 0.55;
   background-image: repeating-linear-gradient(
     -45deg,
-    rgba(224, 214, 191, 0.12) 0,
-    rgba(224, 214, 191, 0.12) 8px,
+    rgba(231, 222, 210, 0.18) 0,
+    rgba(231, 222, 210, 0.18) 8px,
     rgba(255, 255, 255, 0.02) 8px,
     rgba(255, 255, 255, 0.02) 18px
   );
@@ -1852,14 +1863,14 @@ body.has-open-modal {
   border-radius: 16px;
   display: grid;
   place-items: center;
-  background: #edf3f2;
+  background: var(--teal-tint);
   color: var(--brand-dark);
   border: 1px solid rgba(15, 118, 110, 0.06);
 }
 
 .practice-card-icon--locked {
-  background: rgba(244, 239, 226, 0.8);
-  color: #8d8676;
+  background: rgba(243, 236, 226, 0.8);
+  color: var(--ink-muted);
   border-color: rgba(141, 134, 118, 0.14);
 }
 
@@ -1876,25 +1887,25 @@ body.has-open-modal {
   min-height: 28px;
   padding: 0 12px;
   border-radius: 999px;
-  background: rgba(216, 207, 190, 0.38);
-  color: #726e66;
+  background: rgba(231, 222, 210, 0.6);
+  color: var(--ink-muted);
   font-size: 0.78rem;
   font-weight: 700;
 }
 
 .practice-status-chip.status-not-started {
-  background: rgba(216, 207, 190, 0.42);
-  color: #726e66;
+  background: rgba(231, 222, 210, 0.72);
+  color: var(--ink-muted);
 }
 
 .practice-status-chip.status-in-progress {
-  background: #f5df99;
-  color: #9a6500;
+  background: var(--orange-tint);
+  color: var(--orange);
 }
 
 .practice-status-chip.status-completed {
-  background: rgba(79, 125, 30, 0.14);
-  color: #4f7d1e;
+  background: rgba(46, 125, 107, 0.14);
+  color: var(--teal);
 }
 
 .practice-card-title {
@@ -1915,7 +1926,7 @@ body.has-open-modal {
 .practice-track-eyebrow {
   display: inline-flex;
   align-items: center;
-  color: #7f796d;
+  color: var(--orange);
   font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -1924,7 +1935,7 @@ body.has-open-modal {
 
 .practice-track-description {
   margin: 0;
-  color: #656156;
+  color: var(--ink-muted);
   font-size: 0.96rem;
   line-height: 1.45;
 }
@@ -1934,8 +1945,8 @@ body.has-open-modal {
   align-items: center;
   gap: 10px;
   padding-top: 10px;
-  border-top: 1px solid rgba(216, 207, 184, 0.75);
-  color: #28584d;
+  border-top: 1px solid rgba(231, 222, 210, 0.75);
+  color: var(--teal-dark);
   font-size: 0.82rem;
   font-weight: 700;
   line-height: 1.4;
@@ -1945,18 +1956,18 @@ body.has-open-modal {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #c7733b;
+  color: var(--orange);
 }
 
 .practice-track-language-group {
   display: grid;
   gap: 10px;
   padding-top: 6px;
-  border-top: 1px solid rgba(216, 207, 184, 0.75);
+  border-top: 1px solid rgba(231, 222, 210, 0.75);
 }
 
 .practice-track-language-label {
-  color: #8e8779;
+  color: var(--orange);
   font-size: 0.76rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -1975,7 +1986,7 @@ body.has-open-modal {
   min-height: 34px;
   padding: 0 14px;
   border-radius: 999px;
-  background: #1e5a4f;
+  background: var(--teal-dark);
   color: #fff;
   font-size: 0.9rem;
   font-weight: 700;
@@ -1989,16 +2000,16 @@ body.has-open-modal {
 }
 
 .practice-language-pill.is-muted {
-  background: rgba(255, 250, 242, 0.9);
-  color: #8d7f65;
-  border: 1px dashed #d7c7a8;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink-muted);
+  border: 1px dashed var(--border);
 }
 
 .practice-card-meta,
 .practice-card-stats {
   justify-content: flex-start;
   flex-wrap: wrap;
-  color: #767268;
+  color: var(--ink-muted);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -2011,7 +2022,7 @@ body.has-open-modal {
 }
 
 .practice-card-meta--count {
-  color: #2e655a;
+  color: var(--teal-dark);
   font-size: 0.82rem;
 }
 
@@ -2025,7 +2036,7 @@ body.has-open-modal {
   width: 100%;
   height: 10px;
   border-radius: 999px;
-  background: #ece6da;
+  background: var(--border);
   overflow: hidden;
 }
 
@@ -2067,7 +2078,7 @@ body.has-open-modal {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #2d6e64;
+  background: var(--teal);
   color: #fff;
   border: 1px solid transparent;
 }
@@ -2083,28 +2094,28 @@ body.has-open-modal {
   align-items: center;
   justify-content: center;
   background: transparent;
-  color: #b5622f;
-  border: 1px solid #d7a672;
+  color: var(--orange);
+  border: 1px solid var(--orange);
 }
 
 .practice-status-chip.track-live {
-  background: rgba(206, 231, 223, 0.9);
-  color: #24584f;
+  background: rgba(225, 239, 234, 0.95);
+  color: var(--teal-dark);
 }
 
 .practice-status-chip.track-upcoming {
-  background: rgba(250, 231, 212, 0.92);
-  color: #b5622f;
+  background: rgba(251, 240, 222, 0.95);
+  color: var(--orange);
 }
 
 .practice-section-card.status-in-progress .practice-card-icon {
-  background: #f9ecd0;
-  color: #c28014;
+  background: var(--orange-tint);
+  color: var(--orange);
   border-color: rgba(217, 164, 65, 0.18);
 }
 
 .practice-section-card.status-in-progress .practice-progress-fill {
-  background: #d9a441;
+  background: var(--orange);
 }
 
 .practice-section-card.status-not-started .practice-progress-fill {
@@ -2116,12 +2127,12 @@ body.has-open-modal {
 }
 
 .section-theme-1 .practice-card-icon {
-  background: rgba(154, 93, 4, 0.12);
+  background: rgba(214, 138, 44, 0.14);
 }
 
 .section-theme-1 .practice-card-icon,
 .section-theme-1 .practice-progress-fill {
-  color: #9a5d04;
+  color: var(--orange);
 }
 
 .section-theme-2 .practice-card-icon {
@@ -2142,9 +2153,9 @@ body.has-open-modal {
   margin-top: 20px;
   margin-bottom: 44px;
   padding: 18px 22px;
-  border: 1px dashed #dfd4bb;
+  border: 1px dashed var(--border);
   border-radius: 22px;
-  background: rgba(255, 250, 242, 0.8);
+  background: rgba(255, 255, 255, 0.8);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2160,13 +2171,13 @@ body.has-open-modal {
 
 .practice-more-copy p {
   margin: 0;
-  color: #6f695d;
+  color: var(--ink-muted);
   font-size: 0.96rem;
   line-height: 1.45;
 }
 
 .practice-more-copy strong {
-  color: #2b2a27;
+  color: var(--ink);
 }
 
 .practice-more-dots {
@@ -2180,14 +2191,14 @@ body.has-open-modal {
   width: 8px;
   height: 8px;
   border-radius: 999px;
-  background: #dbc8a9;
+  background: var(--orange-tint);
 }
 
 .practice-more-link {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  color: #2d6e64;
+  color: var(--teal);
   font-size: 0.98rem;
   font-weight: 700;
   text-decoration: none;
@@ -2195,7 +2206,7 @@ body.has-open-modal {
 }
 
 .practice-more-link:hover {
-  color: #1f544c;
+  color: var(--teal-dark);
 }
 
 .video-placeholder {
@@ -2384,7 +2395,7 @@ body.has-open-modal {
 .footer-inner {
   width: min(1120px, calc(100vw - 32px));
   margin: 0 auto;
-  padding: 42px 0 24px;
+  padding: 72px 0 32px;
 }
 
 .footer-top {
