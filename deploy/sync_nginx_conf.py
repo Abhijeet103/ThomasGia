@@ -31,6 +31,11 @@ STATIC_BLOCK = """    location /static/ {
     }
 """
 
+CANONICAL_HOST_BLOCK = """    if ($host = www.mindmetric.store) {
+        return 301 https://mindmetric.store$request_uri;
+    }
+"""
+
 
 def iter_server_blocks(text: str):
     blocks: list[tuple[int, int, str]] = []
@@ -67,8 +72,21 @@ def ensure_gzip(block: str) -> str:
     return re.sub(r"(server_name\s+[^\n]+;\n)", r"\1\n" + GZIP_BLOCK + "\n", block, count=1)
 
 
+def ensure_canonical_host(block: str) -> str:
+    if "if ($host = www.mindmetric.store)" in block:
+        return block
+    return re.sub(
+        r"(server_name\s+[^\n]+;\n)",
+        r"\1\n" + CANONICAL_HOST_BLOCK + "\n",
+        block,
+        count=1,
+    )
+
+
 def ensure_static_block(block: str) -> str:
-    static_pattern = re.compile(r"(?ms)^    location /static/ \{\n.*?^    \}\n?")
+    static_pattern = re.compile(
+        r"(?ms)^    location /static/ \{\n.*?^    \}\n(?:[ \t]*\n)*"
+    )
     if static_pattern.search(block):
         return static_pattern.sub(STATIC_BLOCK + "\n", block, count=1)
 
@@ -89,6 +107,7 @@ def patch_config(text: str) -> str:
     for start, end, block in blocks:
         updated.append(text[cursor:start])
         if should_patch(block):
+            block = ensure_canonical_host(block)
             block = ensure_gzip(block)
             block = ensure_static_block(block)
         updated.append(block)

@@ -6,10 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ page_title|default:"MindMetric" }}</title>
     <meta name="description" content="{{ meta_description|default:'Cognitive and psychometric test practice platform.' }}">
-    <link rel="canonical" href="{{ request.build_absolute_uri }}">
+    <meta name="robots" content="{{ seo_robots_content }}">
+    {% if google_site_verification %}<meta name="google-site-verification" content="{{ google_site_verification }}">{% endif %}
+    <link rel="canonical" href="{{ seo_canonical_url }}">
     <meta property="og:title" content="{{ page_title|default:'MindMetric' }}">
     <meta property="og:description" content="{{ meta_description|default:'Cognitive and psychometric test practice platform.' }}">
     <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ seo_canonical_url }}">
+    <script type="application/ld+json">{{ seo_schema_json|safe }}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">

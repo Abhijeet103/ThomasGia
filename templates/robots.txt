@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /accounts/
+Disallow: /dashboard/
+Disallow: /subscription/
+Disallow: /full-test/
+Disallow: /practice/*/full-test/
+Disallow: /practice/*/modules/*/test-setup/
+
+Sitemap: {{ site_url }}/sitemap.xml
