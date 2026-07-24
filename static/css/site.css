@@ -3701,6 +3701,21 @@ body.has-open-modal {
   width: 100%;
 }
 
+.login-google {
+  position: relative;
+}
+
+.login-google-icon {
+  position: absolute;
+  left: 22px;
+  width: 20px;
+  height: 20px;
+}
+
+.login-google.is-loading .login-google-icon {
+  opacity: 0;
+}
+
 .login-divider {
   position: relative;
   margin: 18px 0;
