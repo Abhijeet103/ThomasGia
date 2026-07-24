@@ -16,7 +16,7 @@ ASSESSMENT_CONFIG = {
         "description": "Thomas GIA-style speed practice with full tests and section-wise drills.",
         "full_test_title": "Full test",
         "full_test_description": "All five sections in one flow, designed to feel very close to the real GIA.",
-        "full_test_meta_tail": "feels like the real GIA",
+        "full_test_meta_tail": "",
         "full_test_intro_copy": "Each section is shown one by one. First you get instructions, then eight practice questions with instant feedback, then the timed test for that section.",
         "full_test_practice_count": 8,
         "module_label": "Modules",

@@ -752,6 +752,12 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        visible_dashboard_tracks = [
+            card
+            for card in _build_practice_assessment_cards(self.request)
+            if card["visibility_state"] == PracticeTrackVisibility.ACCESSIBLE
+        ]
+        visible_dashboard_assessment_keys = [card["key"] for card in visible_dashboard_tracks]
         attempts = (
             self.request.user.attempts
             .prefetch_related(
@@ -860,7 +866,8 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
         progress_rows = {}
         for item in SectionProgress.objects.filter(user=self.request.user):
             progress_rows.setdefault(item.assessment_type, []).append(item)
-        for assessment_key in (ASSESSMENT_PREPGIA, ASSESSMENT_CCAT):
+        track_by_key = {track["key"]: track for track in visible_dashboard_tracks}
+        for assessment_key in visible_dashboard_assessment_keys:
             config = get_assessment_config(assessment_key)
             module_count = len(config["modules"])
             assessment_progress = {
@@ -882,11 +889,12 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
                 if module_progress_percent >= 100:
                     completed_count += 1
             progress_percent = round((completed_count / module_count) * 100) if module_count else 0
+            track = track_by_key.get(assessment_key, {})
             assessment_cards.append(
                 {
                     "key": assessment_key,
-                    "title": config["title"],
-                    "description": config["description"],
+                    "title": track.get("title", config["title"]),
+                    "description": track.get("description", config["description"]),
                     "module_count": module_count,
                     "modules_touched": modules_touched,
                     "completed_count": completed_count,
@@ -911,6 +919,8 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
                 chart_data[assessment_key][str(module["key"])] = []
 
         for i, attempt in enumerate(reversed(full_test_attempts), start=1):
+            if attempt.assessment_type not in visible_dashboard_assessment_keys:
+                continue
             score = attempt.overall_adjusted_score
             label = attempt.completed_at.strftime("%-d %b") if attempt.completed_at else f"#{i}"
             estimate = _build_estimate(score, attempt.assessment_type)
@@ -929,9 +939,11 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
         )
         section_counters = {
             assessment_key: {str(module["key"]): 0 for module in get_assessment_config(assessment_key)["modules"]}
-            for assessment_key in (ASSESSMENT_PREPGIA, ASSESSMENT_CCAT)
+            for assessment_key in visible_dashboard_assessment_keys
         }
         for attempt in section_chart_attempts:
+            if attempt.assessment_type not in visible_dashboard_assessment_keys:
+                continue
             section = next(iter(attempt.sections.all()), None)
             if section is None:
                 continue
@@ -950,7 +962,7 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
                 }
             )
 
-        for assessment_key in (ASSESSMENT_PREPGIA, ASSESSMENT_CCAT):
+        for assessment_key in visible_dashboard_assessment_keys:
             latest_attempt = next(
                 (
                     attempt for attempt in attempts
@@ -979,7 +991,7 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
                 {"key": module["key"], "title": module["title"]}
                 for module in get_assessment_config(assessment_key)["modules"]
             ]
-            for assessment_key in (ASSESSMENT_PREPGIA, ASSESSMENT_CCAT)
+            for assessment_key in visible_dashboard_assessment_keys
         }
 
         context.update(
@@ -995,7 +1007,7 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
                 "assessment_estimates": assessment_estimates,
                 "chart_data": chart_data,
                 "section_tabs": section_tabs,
-                "default_assessment_key": ASSESSMENT_PREPGIA,
+                "default_assessment_key": visible_dashboard_assessment_keys[0] if visible_dashboard_assessment_keys else "",
             }
         )
         return context

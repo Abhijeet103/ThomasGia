@@ -78,7 +78,7 @@
                     >
                         Practice mode
                     </a>
-                    <a href="{% url 'pages:assessment-section-detail' assessment_slug section.key %}?mode=test" data-show-loader class="{% if section.mode == 'test' %}button{% else %}button-secondary{% endif %} section-mode-pill">Test mode</a>
+                    <a href="{% url 'pages:assessment-section-detail' assessment_slug section.key %}?mode=test" data-show-loader data-page-loader-trigger class="{% if section.mode == 'test' %}button{% else %}button-secondary{% endif %} section-mode-pill">Test mode</a>
                 </div>
                 {% if section.mode == "test" %}
                     <p class="muted section-mode-copy">Timed section · fullscreen required · one player, card updates in place as you go.</p>

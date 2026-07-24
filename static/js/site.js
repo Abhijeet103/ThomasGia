@@ -5,41 +5,83 @@ document.addEventListener("DOMContentLoaded", () => {
     body.classList.add(`role-context-${role}`);
   }
 
-  initPageLoader();
+  initPageLoadOverlay();
+  initButtonLoaders();
   initSectionHelpToggle();
   initSectionPlayer();
   initFullTestPlayer();
   initModalDialogs();
 });
 
-function initPageLoader() {
+function initPageLoadOverlay() {
   const loader = document.querySelector("[data-page-loader]");
   if (!loader) {
     return;
   }
 
-  let loading = false;
-
   const showLoader = () => {
-    if (loading) {
-      return;
-    }
-    loading = true;
     loader.removeAttribute("hidden");
     document.body.classList.add("is-loading");
   };
 
   const hideLoader = () => {
-    loading = false;
     loader.setAttribute("hidden", "");
     document.body.classList.remove("is-loading");
   };
 
   window.showPageLoader = showLoader;
   window.hidePageLoader = hideLoader;
+  hideLoader();
+  window.addEventListener("pageshow", hideLoader);
 
   document.addEventListener("click", (event) => {
-    const trigger = event.target.closest("a[data-show-loader], button[data-show-loader], input[data-show-loader]");
+    const trigger = event.target.closest("[data-page-loader-trigger]");
+    if (!trigger || event.defaultPrevented) {
+      return;
+    }
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    showLoader();
+  });
+}
+
+function initButtonLoaders() {
+  const setButtonLoading = (trigger) => {
+    if (!(trigger instanceof HTMLElement)) {
+      return;
+    }
+    const isButtonStyle = trigger.classList.contains("button") || trigger.classList.contains("button-secondary");
+    if (!isButtonStyle || trigger.classList.contains("is-loading")) {
+      return;
+    }
+    if (!trigger.querySelector(".btn-spinner")) {
+      const spinner = document.createElement("span");
+      spinner.className = "btn-spinner";
+      spinner.setAttribute("aria-hidden", "true");
+      trigger.appendChild(spinner);
+    }
+    trigger.classList.add("is-loading");
+    if (trigger instanceof HTMLButtonElement || trigger instanceof HTMLInputElement) {
+      trigger.disabled = true;
+    }
+  };
+
+  const resetButtonLoading = () => {
+    document.querySelectorAll(".is-loading").forEach((el) => {
+      el.classList.remove("is-loading");
+      if (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) {
+        el.disabled = false;
+      }
+    });
+  };
+
+  window.setButtonLoading = setButtonLoading;
+
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest(
+      "a[data-show-loader], button[data-show-loader], input[data-show-loader], a[data-btn-loader], button[data-btn-loader], input[data-btn-loader]"
+    );
     if (!trigger || event.defaultPrevented) {
       return;
     }
@@ -49,7 +91,7 @@ function initPageLoader() {
     if (trigger instanceof HTMLButtonElement && trigger.disabled) {
       return;
     }
-    showLoader();
+    setButtonLoading(trigger);
   });
 
   document.addEventListener("submit", (event) => {
@@ -57,14 +99,14 @@ function initPageLoader() {
     if (!(form instanceof HTMLFormElement) || event.defaultPrevented) {
       return;
     }
-    if (form.dataset.showLoader === undefined) {
+    if (form.dataset.showLoader === undefined && form.dataset.btnLoader === undefined) {
       return;
     }
-    showLoader();
+    const submitter = event.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
+    setButtonLoading(submitter);
   });
 
-  window.addEventListener("pageshow", hideLoader);
-  window.addEventListener("beforeunload", showLoader);
+  window.addEventListener("pageshow", resetButtonLoading);
 }
 
 function initModalDialogs() {
@@ -476,8 +518,10 @@ function initSectionPlayer() {
     });
     document.addEventListener("fullscreenchange", syncFullscreenTestUI);
     fullscreenStartButton?.addEventListener("click", async () => {
+      window.showPageLoader?.();
       const enteredFullscreen = await requestFullscreenFor(player);
       if (!enteredFullscreen) {
+        window.hidePageLoader?.();
         showFeedback("Fullscreen is required to start test mode.", "wrong");
         return;
       }
@@ -494,6 +538,7 @@ function initSectionPlayer() {
         }
       }, 1000);
       renderQuestion();
+      window.hidePageLoader?.();
     });
     syncFullscreenTestUI();
     showStage(introStage);
@@ -836,8 +881,10 @@ function initFullTestPlayer() {
   };
 
   startButton?.addEventListener("click", async () => {
+    window.showPageLoader?.();
     const enteredFullscreen = await requestFullscreenFor(player);
     if (!enteredFullscreen) {
+      window.hidePageLoader?.();
       showFeedback("Fullscreen is required to start the full test.", "wrong");
       return;
     }
@@ -846,12 +893,15 @@ function initFullTestPlayer() {
     phase = "practice";
     updateEndTestButton();
     updateTimer();
-    renderQuestion();
+    await renderQuestion();
+    window.hidePageLoader?.();
   });
 
   fullscreenStartButton?.addEventListener("click", async () => {
+    window.showPageLoader?.();
     const enteredFullscreen = await requestFullscreenFor(player);
     if (!enteredFullscreen) {
+      window.hidePageLoader?.();
       showFeedback("Fullscreen is required to start timed test mode.", "wrong");
       return;
     }
@@ -860,7 +910,8 @@ function initFullTestPlayer() {
     phase = "test";
     updateEndTestButton();
     startTimer();
-    renderQuestion();
+    await renderQuestion();
+    window.hidePageLoader?.();
   });
 
   nextPhaseButton?.addEventListener("click", () => {

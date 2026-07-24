@@ -74,13 +74,7 @@
                         <a href="{{ assessment.open_url }}" class="practice-button-primary">Open practice <span class="practice-button-arrow" aria-hidden="true">&rarr;</span></a>
                     </div>
                 </article>
-            {% endif %}
-        {% endfor %}
-    </div>
-
-    <div class="practice-card-grid practice-assessment-grid practice-assessment-grid--upcoming">
-        {% for assessment in assessments %}
-            {% if assessment.visibility_state == "upcoming" %}
+            {% elif assessment.visibility_state == "upcoming" %}
                 <article class="card practice-section-card practice-track-card practice-track-card--upcoming">
                     <div class="practice-track-pattern" aria-hidden="true"></div>
                     <div class="practice-card-top">
