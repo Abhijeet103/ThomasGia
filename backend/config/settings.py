@@ -186,7 +186,11 @@ if GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET:
         "key": "",
     }
 
-SITE_URL = os.getenv("SITE_URL", "http://127.0.0.1:8000" if IS_DEVELOPMENT else "https://mindmetric.store")
+SITE_URL = (
+    os.getenv("SITE_URL", "http://127.0.0.1:8000")
+    if IS_DEVELOPMENT
+    else "https://mindmetric.store"
+)
 GOOGLE_SITE_VERIFICATION = os.getenv("GOOGLE_SITE_VERIFICATION", "")
 DATABASE_ADMIN_URL = os.getenv("DATABASE_ADMIN_URL", "").strip()
 DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG", "mindmetric")
