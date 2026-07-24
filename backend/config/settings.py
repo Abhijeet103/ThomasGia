@@ -139,6 +139,14 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [ROOT_DIR / "static"]
 STATIC_ROOT = ROOT_DIR / "staticfiles"
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "accounts.User"
 SITE_ID = 2
