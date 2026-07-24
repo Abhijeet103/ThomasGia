@@ -9,7 +9,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -157,6 +157,13 @@ def _track_open_url(assessment_key: str) -> str:
     return reverse("pages:assessment-practice", args=[assessment_key])
 
 
+def _track_open_url_for_request(request, assessment_key: str) -> str:
+    target_url = _track_open_url(assessment_key)
+    if request.user.is_authenticated:
+        return target_url
+    return f"{reverse('pages:login')}?next={target_url}"
+
+
 def _notify_redirect_target(request) -> str:
     return request.META.get("HTTP_REFERER") or reverse("pages:practice")
 
@@ -220,7 +227,7 @@ def _build_practice_assessment_cards(request) -> list[dict]:
                 "status_label": "Live" if visibility_state == PracticeTrackVisibility.ACCESSIBLE else "Coming soon",
                 "status_class": "track-live" if visibility_state == PracticeTrackVisibility.ACCESSIBLE else "track-upcoming",
                 "can_open": can_open,
-                "open_url": _track_open_url(base["key"]) if route_enabled else "",
+                "open_url": _track_open_url_for_request(request, base["key"]) if route_enabled else "",
                 "notify_form": TrackWaitlistForm(initial={"assessment_type": base["key"], "next": _notify_redirect_target(request)}),
                 "is_waitlisted": base["key"] in waitlisted_assessments,
                 "login_notify_url": _notify_me_login_url(request),
@@ -626,6 +633,8 @@ class FullTestPageView(LoginRequiredMixin, TemplateView):
                 "full_test_data": full_test_data,
                 "full_test_attempt_id": full_test_attempt_id,
                 "full_test_question_url": f"/api/tests/full-tests/{full_test_attempt_id}/question/" if full_test_attempt_id else "",
+                "full_test_section_url": f"/api/tests/full-tests/{full_test_attempt_id}/section/" if full_test_attempt_id else "",
+                "full_test_section_submit_url": f"/api/tests/full-tests/{full_test_attempt_id}/section-submit/" if full_test_attempt_id else "",
                 "full_test_submit_url": f"/api/tests/full-tests/{full_test_attempt_id}/submit/" if full_test_attempt_id else "",
                 "full_test_access_error": access_error,
             }
@@ -653,10 +662,6 @@ class SectionDetailPageView(TemplateView):
             mode = "practice"
 
         meta = get_module_meta(section_type)
-        section_attempt_id = None
-        section_submit_url = ""
-        section_access_error = ""
-        section_access_requires_upgrade = False
         practice_question_total = max(1, get_time_limit_seconds(section_type) // 2)
         practice_questions_solved = 0
         if self.request.user.is_authenticated:
@@ -668,25 +673,10 @@ class SectionDetailPageView(TemplateView):
             if progress is not None:
                 practice_questions_solved = progress.practice_questions_solved
         practice_progress_percent = min(round((practice_questions_solved / practice_question_total) * 100), 100) if practice_question_total else 0
-        if mode == "test" and self.request.user.is_authenticated:
-            try:
-                attempt = get_or_create_section_attempt(self.request.user, section_type, assessment_type=assessment_type)
-                section_attempt_id = attempt.id
-                previews = get_section_test_previews(attempt)
-                section_submit_url = f"/api/tests/section-tests/{section_attempt_id}/submit/" if section_attempt_id else ""
-            except PermissionError as exc:
-                section_access_error = str(exc)
-                section_access_requires_upgrade = True
-                previews = []
-            except FullTestSessionError:
-                logger.exception("Section test setup failed because the active Redis-backed session was unavailable.")
-                section_access_error = "Section test is temporarily unavailable. Please try again in a moment."
-                previews = []
-        else:
-            previews = _build_section_questions(section_type, mode, user=self.request.user)
+        practice_previews = _build_section_questions(section_type, "practice", user=self.request.user)
         context.update(
             {
-                "page_title": f"{meta['title']} {mode.title()} | MindMetric",
+                "page_title": f"{meta['title']} Practice | MindMetric",
                 "meta_description": meta["description"],
                 "assessment": assessment_config,
                 "assessment_slug": assessment_type,
@@ -695,21 +685,52 @@ class SectionDetailPageView(TemplateView):
                     "title": meta["title"],
                     "description": meta["description"],
                     "instruction": meta["instruction"],
+                    "help": meta.get("help", {}),
                     "time_limit_seconds": get_time_limit_seconds(section_type),
-                    "question_count": len(previews),
+                    "duration_minutes": max(1, round(get_time_limit_seconds(section_type) / 60)),
+                    "question_count": len(practice_previews),
                     "practice_question_total": practice_question_total,
                     "practice_questions_solved": practice_questions_solved,
                     "practice_progress_percent": practice_progress_percent,
-                    "previews": previews,
+                    "practice_previews": practice_previews,
                     "mode": mode,
-                    "attempt_id": section_attempt_id,
-                    "submit_url": section_submit_url,
-                    "access_error": section_access_error,
-                    "access_requires_upgrade": section_access_requires_upgrade,
+                    "test_setup_url": reverse("pages:assessment-section-test-setup", args=[assessment_type, section_type]),
                 },
             }
         )
         return context
+
+
+class SectionTestSetupView(LoginRequiredMixin, View):
+    login_url = "/login/"
+
+    def post(self, request, *args, **kwargs):
+        assessment_type = kwargs.get("assessment_slug", ASSESSMENT_PREPGIA)
+        try:
+            section_type = SectionType(kwargs["slug"])
+        except ValueError as exc:
+            raise Http404("Section not found.") from exc
+        if section_type not in get_assessment_module_keys(assessment_type):
+            raise Http404("Section not found.")
+
+        try:
+            attempt = get_or_create_section_attempt(request.user, section_type, assessment_type=assessment_type)
+            previews = get_section_test_previews(attempt)
+        except PermissionError as exc:
+            return JsonResponse({"detail": str(exc), "access_requires_upgrade": True}, status=403)
+        except FullTestSessionError:
+            logger.exception("Section test setup failed because the active Redis-backed session was unavailable.")
+            return JsonResponse({"detail": "Section test is temporarily unavailable. Please try again in a moment."}, status=503)
+
+        return JsonResponse(
+            {
+                "attempt_id": attempt.id,
+                "submit_url": f"/api/tests/section-tests/{attempt.id}/submit/",
+                "progress_url": reverse("attempt-progress", args=[attempt.id]),
+                "end_url": reverse("attempt-end", args=[attempt.id]),
+                "previews": previews,
+            }
+        )
 
 
 class LoginPageView(View):

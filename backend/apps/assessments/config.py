@@ -27,6 +27,16 @@ ASSESSMENT_CONFIG = {
                 "description": "Comparative and transitive logic questions under timed conditions.",
                 "instruction": "Read the context statements first. Once you understand the relationship, reveal the question and choose the correct person or thing.",
                 "time_limit_seconds": 300,
+                "help": {
+                    "task": "Remember a comparison, then answer a question about the relationship without seeing the original statement.",
+                    "steps": [
+                        "Identify the people or things being compared.",
+                        "Restate the comparison in simpler words.",
+                        "Keep the direction of the relationship clear when the question appears.",
+                    ],
+                    "watch_out": "Reversed or negative wording such as less careful instead of more careful.",
+                    "tip": "Mentally place the stronger or greater item first before revealing the question.",
+                },
             },
             {
                 "key": SectionType.PERCEPTUAL_SPEED,
@@ -34,6 +44,16 @@ ASSESSMENT_CONFIG = {
                 "description": "Fast letter-pair matching built to simulate GIA-style pressure.",
                 "instruction": "Look at the letter pairs carefully. Count the matching pairs quickly before selecting the correct number.",
                 "time_limit_seconds": 120,
+                "help": {
+                    "task": "Compare the letter pairs and count how many are exact matches.",
+                    "steps": [
+                        "Scan the pairs from left to right.",
+                        "Compare both characters in each pair.",
+                        "Keep a running count and answer once the row is complete.",
+                    ],
+                    "watch_out": "Do not count a pair when only one of its characters matches.",
+                    "tip": "Use a steady scan rhythm instead of repeatedly checking earlier pairs.",
+                },
             },
             {
                 "key": SectionType.NUMBER_SPEED_ACCURACY,
@@ -41,6 +61,16 @@ ASSESSMENT_CONFIG = {
                 "description": "Find the number furthest from the median with speed and accuracy.",
                 "instruction": "Review the three numbers, identify the middle value mentally, and choose the number furthest from it.",
                 "time_limit_seconds": 120,
+                "help": {
+                    "task": "Find the middle value, then choose the number furthest away from it.",
+                    "steps": [
+                        "Order the three values from smallest to largest.",
+                        "Identify the middle value.",
+                        "Compare the distance from the middle to both outer values.",
+                    ],
+                    "watch_out": "The correct answer is not always the largest number.",
+                    "tip": "Ignore the middle value after identifying it and compare only the two gaps.",
+                },
             },
             {
                 "key": SectionType.WORD_MEANING,
@@ -48,6 +78,16 @@ ASSESSMENT_CONFIG = {
                 "description": "Odd-one-out vocabulary sets backed by a curated word bank.",
                 "instruction": "Read the words shown in the context, spot the odd one out, and then choose it from the answer options.",
                 "time_limit_seconds": 180,
+                "help": {
+                    "task": "Identify the word that does not belong with the others.",
+                    "steps": [
+                        "Look for a meaning or category shared by most words.",
+                        "Test each word against that shared relationship.",
+                        "Choose the word that falls outside the group.",
+                    ],
+                    "watch_out": "Do not choose a word only because it is less familiar.",
+                    "tip": "Describe the shared group in one short phrase before selecting the odd word.",
+                },
             },
             {
                 "key": SectionType.SPATIAL_VISUALIZATION,
@@ -55,6 +95,16 @@ ASSESSMENT_CONFIG = {
                 "description": "Decide whether abstract shapes are rotated matches or mirrored variants.",
                 "instruction": "Study the shapes first, then decide whether they are the same when rotated or if one is mirrored.",
                 "time_limit_seconds": 120,
+                "help": {
+                    "task": "Decide whether two shapes are the same after rotation or whether one has been mirrored.",
+                    "steps": [
+                        "Choose one distinctive corner, mark, or feature.",
+                        "Mentally rotate the first shape to align that feature.",
+                        "Check whether the remaining features keep the same arrangement.",
+                    ],
+                    "watch_out": "A mirrored shape cannot be matched by rotation alone.",
+                    "tip": "Track an asymmetric feature rather than comparing the whole outline at once.",
+                },
             },
         ],
     },
@@ -76,6 +126,16 @@ ASSESSMENT_CONFIG = {
                 "description": "Fast quantitative reasoning with number series, ratios, percentages, and work-rate logic.",
                 "instruction": "Read the question, work mentally where possible, and choose the best quantitative answer quickly.",
                 "time_limit_seconds": 180,
+                "help": {
+                    "task": "Solve short numerical problems involving patterns, ratios, percentages, and practical arithmetic.",
+                    "steps": [
+                        "Identify the type of calculation the question requires.",
+                        "Estimate the likely answer range.",
+                        "Calculate only what is needed and eliminate unsuitable options.",
+                    ],
+                    "watch_out": "Avoid spending time on exact calculation when estimation separates the options.",
+                    "tip": "Check units and direction before calculating.",
+                },
             },
             {
                 "key": SectionType.CCAT_VERBAL,
@@ -83,6 +143,16 @@ ASSESSMENT_CONFIG = {
                 "description": "Analogies, sentence logic, vocabulary, and odd-one-out verbal questions.",
                 "instruction": "Read the prompt carefully, compare the options, and choose the strongest language-based answer.",
                 "time_limit_seconds": 180,
+                "help": {
+                    "task": "Solve analogies, vocabulary, sentence logic, and word-group questions.",
+                    "steps": [
+                        "Identify the relationship or language rule being tested.",
+                        "Predict the kind of answer you expect.",
+                        "Compare that prediction with the available options.",
+                    ],
+                    "watch_out": "A plausible option may still fail to match the exact relationship.",
+                    "tip": "State an analogy relationship as a short sentence before checking the answers.",
+                },
             },
             {
                 "key": SectionType.CCAT_SPATIAL,
@@ -90,6 +160,16 @@ ASSESSMENT_CONFIG = {
                 "description": "Pattern recognition, transformations, and non-verbal logic questions.",
                 "instruction": "Look for the transformation rule or pattern first, then choose the option that completes it best.",
                 "time_limit_seconds": 180,
+                "help": {
+                    "task": "Identify a visual rule and choose the option that correctly continues or completes it.",
+                    "steps": [
+                        "Track changes in position, rotation, count, fill, and shape separately.",
+                        "Form the simplest rule that explains the sequence.",
+                        "Confirm that rule across every available step.",
+                    ],
+                    "watch_out": "Do not accept a rule that explains only the final two images.",
+                    "tip": "Test one visual property at a time before combining multiple changes.",
+                },
             },
         ],
     },

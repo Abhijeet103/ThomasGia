@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block content %}
 <section class="content-section">
@@ -10,18 +11,45 @@
         <div class="notice">{{ full_test_access_error }}</div>
     {% elif full_test_data %}
     {{ full_test_data|json_script:"full-test-data" }}
-    <section class="card full-test-player" data-full-test-player data-attempt-id="{{ full_test_attempt_id }}" data-question-url="{{ full_test_question_url }}" data-submit-url="{{ full_test_submit_url }}" data-progress-url="{% if full_test_attempt_id %}{% url 'attempt-progress' full_test_attempt_id %}{% endif %}" data-dashboard-url="{% url 'pages:dashboard' %}">
-        <div class="test-player-topbar">
-            <p class="muted test-timer" data-full-timer hidden></p>
-            <button type="button" class="button-secondary button-small" data-full-skip-practice hidden>Skip practice question</button>
-            <button type="button" class="button-secondary button-small" data-full-end-test hidden>End Test</button>
+    <section class="card full-test-player" data-full-test-player data-attempt-id="{{ full_test_attempt_id }}" data-question-url="{{ full_test_question_url }}" data-section-url="{{ full_test_section_url }}" data-section-submit-url="{{ full_test_section_submit_url }}" data-submit-url="{{ full_test_submit_url }}" data-progress-url="{% if full_test_attempt_id %}{% url 'attempt-progress' full_test_attempt_id %}{% endif %}" data-dashboard-url="{% url 'pages:dashboard' %}">
+        <div class="player-loader" data-player-loader hidden aria-live="polite" aria-label="Loading">
+            <div class="page-loader-dots" aria-hidden="true">
+                <span class="page-loader-dot"></span>
+                <span class="page-loader-dot"></span>
+                <span class="page-loader-dot"></span>
+                <span class="page-loader-dot"></span>
+                <span class="page-loader-dot"></span>
+            </div>
+        </div>
+        <div class="test-player-topbar full-test-topbar">
+            <div class="full-test-identity">
+                <span class="brand-lockup full-test-brand-lockup">
+                    <img src="{% static 'favicon.svg' %}" width="30" height="30" alt="" aria-hidden="true">
+                    <span class="brand-wordmark full-test-brand">MindMetric</span>
+                </span>
+                <span class="full-test-divider" aria-hidden="true">/</span>
+                <span class="full-test-assessment">{{ assessment.title }}</span>
+                <span class="full-test-divider" aria-hidden="true">/</span>
+                <span class="full-test-section-name" data-full-rail-section>Section</span>
+            </div>
+            <div class="full-test-rail-progress">
+                <span class="full-test-phase-pill" data-full-rail-phase>Practice</span>
+                <span class="full-test-progress-copy" data-full-rail-progress>1 / {{ assessment.modules|length }}</span>
+                <span class="full-test-progress-track" aria-hidden="true">
+                    <span class="full-test-progress-fill" data-full-rail-progress-fill></span>
+                </span>
+            </div>
+            <div class="full-test-topbar-actions">
+                <button type="button" class="button-secondary button-small full-test-action" data-full-skip-practice hidden>Skip question</button>
+                <button type="button" class="button-secondary button-small full-test-action" data-full-end-test hidden>End test</button>
+            </div>
         </div>
 
         <div class="test-stage" data-full-stage="intro">
             <p class="muted test-label" data-full-phase-label>Section intro</p>
             <h2 data-full-section-title></h2>
             <p class="section-copy" data-full-section-description></p>
-            <div class="notice" data-full-instruction></div>
+            <div class="notice full-test-intro-note" data-full-instruction></div>
             <button type="button" class="button" data-full-start>Enter fullscreen and start full test</button>
         </div>
 
@@ -34,32 +62,61 @@
 
         <div class="feedback-banner" data-full-feedback hidden></div>
 
-        <div class="test-stage" data-full-stage="context" hidden>
-            <p class="muted test-label">Context</p>
-            <div class="test-context test-context-large test-shell" data-full-context></div>
-            <p class="muted">Click the context card to reveal the question.</p>
-        </div>
-
-        <div class="test-stage" data-full-stage="question" hidden>
-            <p class="muted test-label">Question</p>
-            <div class="test-context test-context-large test-shell">
-                <h3 class="test-question" data-full-question></h3>
-                <div class="answer-options" data-full-options></div>
+        <div class="full-test-modal-backdrop" data-full-end-modal hidden>
+            <div class="full-test-modal" role="dialog" aria-modal="true" aria-labelledby="full-test-end-title" aria-describedby="full-test-end-copy">
+                <p class="full-test-modal-eyebrow">Leave test</p>
+                <h3 id="full-test-end-title">End the full test?</h3>
+                <p id="full-test-end-copy">Your score so far will be saved, and you will leave the current fullscreen session.</p>
+                <div class="full-test-modal-actions">
+                    <button type="button" class="button-secondary button-small full-test-modal-cancel" data-full-end-cancel>Keep going</button>
+                    <button type="button" class="button button-small full-test-modal-confirm" data-full-end-confirm>End test</button>
+                </div>
             </div>
         </div>
 
-        <div class="test-stage" data-full-stage="section-complete" hidden>
-            <p class="muted test-label" data-full-section-complete-label></p>
-            <h3 data-full-section-complete-title></h3>
-            <p class="muted" data-full-section-complete-copy></p>
-            <button type="button" class="button" data-full-next-phase></button>
+        <div class="test-stage full-test-stage" data-full-stage="context" hidden>
+            <div class="full-test-stage-stack">
+                <div class="full-test-stage-meta">
+                    <p class="muted test-label">Context</p>
+                    <p class="test-timer full-test-timer-pill" data-full-timer hidden></p>
+                </div>
+                <div class="test-context test-context-large test-shell full-test-stage-shell full-test-context-shell" data-full-context></div>
+                <p class="muted full-test-stage-helper">Click the context card to reveal the question.</p>
+            </div>
         </div>
 
-        <div class="test-stage" data-full-stage="complete" hidden>
-            <p class="muted test-label">Full test complete</p>
-            <h3>You have completed all sections.</h3>
-            <p class="muted" data-full-complete-summary>Refresh the page if you want to run the guided full test again.</p>
+        <div class="test-stage full-test-stage" data-full-stage="question" hidden>
+            <div class="full-test-stage-stack">
+                <div class="full-test-stage-meta">
+                    <p class="muted test-label">Question</p>
+                    <p class="test-timer full-test-timer-pill" data-full-timer hidden></p>
+                </div>
+                <div class="test-context test-context-large test-shell full-test-stage-shell full-test-question-shell">
+                    <h3 class="test-question full-test-question-title" data-full-question></h3>
+                    <div class="answer-options full-test-answer-options" data-full-options></div>
+                    <p class="section-inline-feedback full-test-inline-feedback" data-full-inline-feedback hidden></p>
+                </div>
+            </div>
         </div>
+
+        <div class="test-stage full-test-stage" data-full-stage="section-complete" hidden>
+            <div class="full-test-stage-stack full-test-complete-stack">
+                <p class="muted test-label" data-full-section-complete-label></p>
+                <h3 data-full-section-complete-title></h3>
+                <p class="muted" data-full-section-complete-copy></p>
+                <button type="button" class="button" data-full-next-phase></button>
+            </div>
+        </div>
+
+        <div class="test-stage full-test-stage" data-full-stage="complete" hidden>
+            <div class="full-test-stage-stack full-test-complete-stack">
+                <p class="muted test-label">Full test complete</p>
+                <h3>You have completed all sections.</h3>
+                <p class="muted" data-full-complete-summary>Refresh the page if you want to run the guided full test again.</p>
+            </div>
+        </div>
+
+        <p class="full-test-footer-note">Read the prompt, reveal the question, then move fast and stay accurate.</p>
     </section>
     {% else %}
         <div class="notice">The full test is not ready yet.</div>

@@ -158,16 +158,7 @@ def get_or_create_full_test_attempt(user: User, assessment_type: str = ASSESSMEN
     session_sections = []
     existing_sections = {section.section_type: section for section in attempt.sections.all()}
     for index, section_key in enumerate(get_assessment_module_keys(assessment_type)):
-        logger.info(
-            "Generating full test section attempt_id=%s section=%s practice_count=%s test_count=%s",
-            attempt.id,
-            section_key,
-            full_test_practice_count,
-            get_time_limit_seconds(section_key),
-        )
-        practice_questions = _build_question_batch(attempt.id, section_key, "practice", full_test_practice_count, "easy")
         test_count = get_time_limit_seconds(section_key)
-        test_questions = _build_question_batch(attempt.id, section_key, "test", test_count, "medium")
 
         section = existing_sections.get(section_key)
         if section is None:
@@ -178,14 +169,14 @@ def get_or_create_full_test_attempt(user: User, assessment_type: str = ASSESSMEN
                 order_index=index,
                 difficulty="mixed",
                 time_limit_seconds=get_time_limit_seconds(section_key),
-                question_count=len(test_questions),
+                question_count=test_count,
                 question_payload={},
             )
         else:
             section.order_index = index
             section.difficulty = "mixed"
             section.time_limit_seconds = get_time_limit_seconds(section_key)
-            section.question_count = len(test_questions)
+            section.question_count = test_count
             section.question_payload = {}
             section.save(update_fields=["order_index", "difficulty", "time_limit_seconds", "question_count", "question_payload"])
             logger.info(
@@ -193,15 +184,19 @@ def get_or_create_full_test_attempt(user: User, assessment_type: str = ASSESSMEN
                 attempt.id,
                 section.id,
                 section_key,
-                len(test_questions),
+                test_count,
             )
 
         session_sections.append(
             {
                 "section_id": section.id,
                 "section_type": section_key,
-                "practice_questions": practice_questions,
-                "test_questions": test_questions,
+                "practice_count": full_test_practice_count,
+                "test_count": test_count,
+                "practice_questions": [],
+                "test_questions": [],
+                "practice_generated": False,
+                "test_generated": False,
                 "submitted_answers": [],
             }
         )
@@ -321,6 +316,7 @@ def get_full_test_question(attempt: Attempt, section_index: int, phase: str, que
         raise FullTestSessionError("Invalid question index.")
 
     section = sections[section_index]
+    _ensure_full_test_section_phase_generated(attempt, session, section, phase)
     question_set = section["practice_questions"] if phase == "practice" else section["test_questions"]
     if question_index >= len(question_set):
         raise FullTestSessionError("Question index is out of range.")
@@ -338,11 +334,132 @@ def get_full_test_question(attempt: Attempt, section_index: int, phase: str, que
     return _serialize_generated_question_for_player(question, include_correct_answer=phase == "practice")
 
 
+def get_full_test_section_payload(attempt: Attempt, section_index: int) -> dict[str, Any]:
+    session = _load_full_test_session(attempt.id)
+    sections = session.get("sections", [])
+    if section_index < 0 or section_index >= len(sections):
+        raise FullTestSessionError("Invalid section index.")
+
+    section = sections[section_index]
+    _ensure_full_test_section_phase_generated(attempt, session, section, "practice")
+    _ensure_full_test_section_phase_generated(attempt, session, section, "test")
+
+    return {
+        "section_id": int(section["section_id"]),
+        "section_type": section["section_type"],
+        "practice_questions": [
+            _serialize_generated_question_for_player(question, include_correct_answer=True)
+            for question in section.get("practice_questions", [])
+        ],
+        "test_questions": [
+            _serialize_generated_question_for_player(question, include_correct_answer=False)
+            for question in section.get("test_questions", [])
+        ],
+    }
+
+
+def submit_full_test_section(attempt: Attempt, section_id: int, submitted_answers: list[dict[str, Any]]) -> dict[str, Any]:
+    session = _load_full_test_session(attempt.id)
+    session_section = next((item for item in session.get("sections", []) if int(item.get("section_id", 0)) == section_id), None)
+    if session_section is None:
+        raise FullTestSessionError("Active test session is missing section data.")
+
+    _ensure_full_test_section_phase_generated(attempt, session, session_section, "test")
+    normalized_answers = _normalize_answer_rows(submitted_answers)
+    session_section["submitted_answers"] = normalized_answers
+    _save_full_test_session(attempt.id, session)
+
+    section = attempt.sections.filter(id=section_id).first()
+    if section is None:
+        raise FullTestSessionError("Attempt section not found.")
+
+    expected_questions = session_section.get("test_questions", [])
+    summary = _calculate_question_summary(expected_questions, normalized_answers)
+    section.adjusted_score = summary["score"]
+    section.correct_answers_count = summary["correct_count"]
+    section.incorrect_answers_count = summary["incorrect_count"]
+    section.question_payload = {}
+    section.save(update_fields=["adjusted_score", "correct_answers_count", "incorrect_answers_count", "question_payload"])
+    logger.info(
+        "Saved full test section summary attempt_id=%s section_id=%s section=%s score=%s correct=%s incorrect=%s question_count=%s",
+        attempt.id,
+        section.id,
+        section.section_type,
+        summary["score"],
+        summary["correct_count"],
+        summary["incorrect_count"],
+        len(expected_questions),
+    )
+    return {
+        "section_id": section.id,
+        "section_type": section.section_type,
+        "score": summary["score"],
+        "correct_count": summary["correct_count"],
+        "incorrect_count": summary["incorrect_count"],
+    }
+
+
+def _ensure_full_test_section_phase_generated(
+    attempt: Attempt,
+    session: dict[str, Any],
+    section: dict[str, Any],
+    phase: str,
+) -> None:
+    generated_flag = f"{phase}_generated"
+    question_key = f"{phase}_questions"
+    if section.get(generated_flag) and section.get(question_key):
+        return
+
+    section_type = section.get("section_type", "")
+    if not section_type:
+        raise FullTestSessionError("Active test session is missing section metadata.")
+
+    count_key = f"{phase}_count"
+    count = int(section.get(count_key) or 0)
+    if count <= 0:
+        raise FullTestSessionError("Active test session is missing question counts.")
+
+    difficulty = "easy" if phase == "practice" else "medium"
+    logger.info(
+        "Generating staged full test section attempt_id=%s section=%s phase=%s difficulty=%s count=%s",
+        attempt.id,
+        section_type,
+        phase,
+        difficulty,
+        count,
+    )
+    section[question_key] = _build_question_batch(attempt.id, section_type, phase, count, difficulty)
+    section[generated_flag] = True
+    _save_full_test_session(attempt.id, session)
+
+
 def get_section_test_previews(attempt: Attempt) -> list[dict[str, Any]]:
     session = _load_section_test_session(attempt.id)
+    questions = session.get("questions", [])
+    if questions and not isinstance(questions[0], dict):
+        questions = []
+    if questions and "payload" not in questions[0]:
+        logger.info(
+            "Regenerating stale section test session payload attempt_id=%s user_id=%s",
+            attempt.id,
+            attempt.user_id,
+        )
+        section = attempt.sections.order_by("order_index").first()
+        if section is None:
+            raise FullTestSessionError("Section test metadata is missing.")
+        questions = _build_question_batch(
+            attempt.id,
+            section.section_type,
+            "test",
+            section.question_count,
+            section.difficulty,
+        )
+        session["questions"] = questions
+        session["submitted_answers"] = []
+        _save_section_test_session(attempt.id, session)
     return [
         _serialize_generated_question_for_player(question, include_correct_answer=False)
-        for question in session.get("questions", [])
+        for question in questions
     ]
 
 

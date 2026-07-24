@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import logging
+from threading import Thread
 
 from django.conf import settings
 from django.core.mail import send_mail
+from django.db import transaction
+
+from .models import User
 
 
 logger = logging.getLogger(__name__)
@@ -40,19 +44,21 @@ def send_welcome_email(user) -> None:
     )
 
 
-def send_login_alert_email(user) -> None:
-    _send_email(
-        subject="New login to your MindMetric account",
-        message=(
-            f"Hi {user.first_name or 'there'},\n\n"
-            "We noticed a new login to your MindMetric account.\n\n"
-            f"Account: {user.email}\n"
-            "If this was you, no action is needed.\n"
-            f"If this was not you, contact us immediately at {settings.CONTACT_EMAIL}.\n\n"
-            "MindMetric"
-        ),
-        recipients=[user.email],
-    )
+def _send_welcome_email_for_user_id(user_id: int) -> None:
+    try:
+        user = User.objects.only("id", "email", "first_name").get(pk=user_id)
+    except User.DoesNotExist:
+        logger.warning("Skipped welcome email because user id=%s no longer exists", user_id)
+        return
+    send_welcome_email(user)
+
+
+def queue_welcome_email(user_id: int) -> None:
+    def _spawn() -> None:
+        thread = Thread(target=_send_welcome_email_for_user_id, args=(user_id,), daemon=True)
+        thread.start()
+
+    transaction.on_commit(_spawn)
 
 
 def send_subscription_activated_email(user, plan_title: str, expires_at) -> None:

@@ -18,6 +18,7 @@ class User(AbstractUser):
     is_tenant_admin = models.BooleanField(default=False)
     google_sub = models.CharField(max_length=255, blank=True, null=True, unique=True)
     subscription_expires_at = models.DateTimeField(blank=True, null=True)
+    welcome_email_sent_at = models.DateTimeField(blank=True, null=True)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS: list[str] = []

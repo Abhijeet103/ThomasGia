@@ -20,9 +20,11 @@ from .services import (
     create_attempt,
     expire_stale_attempts,
     finalize_attempt_from_saved_progress,
+    get_full_test_section_payload,
     get_full_test_question,
     record_practice_progress,
     save_attempt_progress,
+    submit_full_test_section,
     submit_section_attempt,
     submit_full_test_attempt,
 )
@@ -161,6 +163,55 @@ class FullTestQuestionView(LoginRequiredMixin, View):
             logger.exception("Full test question load failed because the active Redis-backed session was unavailable.")
             return JsonResponse({"detail": "Full test session is temporarily unavailable. Please restart the test."}, status=503)
         return JsonResponse(question)
+
+
+class FullTestSectionView(LoginRequiredMixin, View):
+    def get(self, request, attempt_id: int):
+        expire_stale_attempts(request.user)
+        attempt = Attempt.objects.filter(id=attempt_id, user=request.user, mode=AttemptMode.FULL_TEST).first()
+        if attempt is None:
+            return JsonResponse({"detail": "Attempt not found."}, status=404)
+        if attempt.status == AttemptStatus.COMPLETED:
+            return JsonResponse({"detail": "This test is already completed."}, status=409)
+
+        try:
+            section_index = int(request.GET.get("section_index", "-1"))
+        except ValueError:
+            return JsonResponse({"detail": "Section index must be an integer."}, status=400)
+
+        logger.info("Full test section requested attempt_id=%s user_id=%s section_index=%s", attempt_id, request.user.id, section_index)
+        try:
+            payload = get_full_test_section_payload(attempt, section_index)
+        except FullTestSessionError:
+            logger.exception("Full test section load failed because the active Redis-backed session was unavailable.")
+            return JsonResponse({"detail": "Full test section is temporarily unavailable. Please restart the test."}, status=503)
+        return JsonResponse(payload)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class FullTestSectionSubmitView(LoginRequiredMixin, View):
+    def post(self, request, attempt_id: int):
+        expire_stale_attempts(request.user)
+        attempt = Attempt.objects.filter(id=attempt_id, user=request.user, mode=AttemptMode.FULL_TEST).prefetch_related("sections").first()
+        if attempt is None:
+            return JsonResponse({"detail": "Attempt not found."}, status=404)
+        if attempt.status == AttemptStatus.COMPLETED:
+            return JsonResponse({"detail": "This test is already completed."}, status=409)
+
+        payload = json.loads(request.body or "{}")
+        section_id = payload.get("section_id")
+        if section_id is None:
+            return JsonResponse({"detail": "section_id is required."}, status=400)
+
+        logger.info("Full test section submit requested attempt_id=%s user_id=%s section_id=%s", attempt_id, request.user.id, section_id)
+        try:
+            result = submit_full_test_section(attempt, int(section_id), payload.get("answers", []))
+        except (ValueError, TypeError):
+            return JsonResponse({"detail": "section_id must be an integer."}, status=400)
+        except FullTestSessionError:
+            logger.exception("Full test section submit failed because the active Redis-backed session was unavailable.")
+            return JsonResponse({"detail": "Full test section is temporarily unavailable. Please restart the test."}, status=503)
+        return JsonResponse(result)
 
 
 class AttemptEndView(LoginRequiredMixin, View):

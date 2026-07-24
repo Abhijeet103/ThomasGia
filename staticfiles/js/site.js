@@ -19,23 +19,88 @@ function initPageLoadOverlay() {
     return;
   }
 
+  const isPrimaryActivation = (event) => {
+    if (event.defaultPrevented) {
+      return false;
+    }
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return false;
+    }
+    if ("button" in event && event.button !== 0) {
+      return false;
+    }
+    return true;
+  };
+
+  const togglePlayerLoader = (isVisible) => {
+    const fullscreenHost = document.fullscreenElement;
+    const playerLoader = fullscreenHost?.querySelector?.("[data-player-loader]");
+    if (!playerLoader) {
+      return;
+    }
+    if (isVisible) {
+      playerLoader.removeAttribute("hidden");
+    } else {
+      playerLoader.setAttribute("hidden", "");
+    }
+  };
+
   const showLoader = () => {
     loader.removeAttribute("hidden");
     document.body.classList.add("is-loading");
+    togglePlayerLoader(true);
   };
 
   const hideLoader = () => {
     loader.setAttribute("hidden", "");
     document.body.classList.remove("is-loading");
+    document.querySelectorAll("[data-player-loader]").forEach((playerLoader) => {
+      playerLoader.setAttribute("hidden", "");
+    });
   };
 
   window.showPageLoader = showLoader;
   window.hidePageLoader = hideLoader;
-
-  // The loader is visible by default in the server-rendered HTML so it
-  // covers the initial paint / full reload; hide it once the app is ready.
   hideLoader();
   window.addEventListener("pageshow", hideLoader);
+
+  const navigateWithLoader = (anchor) => {
+    if (!(anchor instanceof HTMLAnchorElement)) {
+      return false;
+    }
+    if (!anchor.href || anchor.target === "_blank" || anchor.hasAttribute("download")) {
+      return false;
+    }
+    const destination = new URL(anchor.href, window.location.href);
+    if (destination.origin !== window.location.origin) {
+      return false;
+    }
+    showLoader();
+    window.requestAnimationFrame(() => {
+      window.location.assign(destination.href);
+    });
+    return true;
+  };
+
+  document.addEventListener("pointerdown", (event) => {
+    const trigger = event.target.closest("[data-page-loader-trigger]");
+    if (!trigger || !isPrimaryActivation(event)) {
+      return;
+    }
+    showLoader();
+  });
+
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-page-loader-trigger]");
+    if (!trigger || !isPrimaryActivation(event)) {
+      return;
+    }
+    if (navigateWithLoader(trigger)) {
+      event.preventDefault();
+      return;
+    }
+    showLoader();
+  });
 }
 
 function initButtonLoaders() {
@@ -59,6 +124,16 @@ function initButtonLoaders() {
     }
   };
 
+  const clearButtonLoading = (trigger) => {
+    if (!(trigger instanceof HTMLElement)) {
+      return;
+    }
+    trigger.classList.remove("is-loading");
+    if (trigger instanceof HTMLButtonElement || trigger instanceof HTMLInputElement) {
+      trigger.disabled = false;
+    }
+  };
+
   const resetButtonLoading = () => {
     document.querySelectorAll(".is-loading").forEach((el) => {
       el.classList.remove("is-loading");
@@ -69,6 +144,7 @@ function initButtonLoaders() {
   };
 
   window.setButtonLoading = setButtonLoading;
+  window.clearButtonLoading = clearButtonLoading;
 
   document.addEventListener("click", (event) => {
     const trigger = event.target.closest(
@@ -176,17 +252,19 @@ function initSectionHelpToggle() {
 
 function initSectionPlayer() {
   const player = document.querySelector("[data-test-player]");
-  const dataScript = document.getElementById("section-question-data");
+  const practiceDataScript = document.getElementById("section-practice-question-data");
+  const testDataScript = document.getElementById("section-test-question-data");
 
-  if (!player || !dataScript) {
+  if (!player || !practiceDataScript || !testDataScript) {
     return;
   }
 
-  const questions = JSON.parse(dataScript.textContent || "[]");
+  const practiceQuestions = JSON.parse(practiceDataScript.textContent || "[]");
+  let testQuestions = JSON.parse(testDataScript.textContent || "[]");
   let currentIndex = 0;
   let correctCount = 0;
   let feedbackTimeout = null;
-  const mode = player.dataset.mode || "practice";
+  let activeMode = player.dataset.mode || "practice";
   const assessmentType = player.dataset.assessmentType || "prepgia";
   const sectionKey = player.dataset.sectionKey || "";
   const practiceTotal = Number(player.dataset.practiceTotal || 0);
@@ -200,31 +278,43 @@ function initSectionPlayer() {
   let practiceElapsedSeconds = 0;
   let practiceTimerInterval = null;
   const submittedAnswers = [];
+  let testSetupLoaded = testQuestions.length > 0;
 
   const seedEl = player.querySelector("[data-test-seed]");
   const progressEl = player.querySelector("[data-test-progress]");
   const progressFillEl = player.querySelector("[data-test-progress-fill]");
+  const practiceProgressWrapEl = player.querySelector("[data-practice-progress-wrap]");
   const practiceProgressCopyEl = player.querySelector("[data-practice-progress-copy]");
   const timerEl = player.querySelector("[data-test-timer]");
   const feedbackEl = player.querySelector("[data-feedback-banner]");
   const completeSummaryEl = player.querySelector("[data-complete-summary]");
   const contextEl = player.querySelector("[data-test-context]");
+  const contextHelperEl = player.querySelector("[data-test-context-helper]");
   const questionEl = player.querySelector("[data-test-question]");
   const optionsEl = player.querySelector("[data-test-options]");
+  const modeCopyEl = player.querySelector(".section-mode-copy");
+  const modeButtons = player.querySelectorAll("[data-player-mode]");
+  const railPhaseEl = player.querySelector("[data-test-rail-phase]");
+  const railProgressEl = player.querySelector("[data-test-progress]");
 
   const contextStage = player.querySelector('[data-test-stage="context"]');
   const questionStage = player.querySelector('[data-test-stage="question"]');
   const completeStage = player.querySelector('[data-test-stage="complete"]');
-  const introStage = player.querySelector('[data-test-stage="intro"]');
+  const practiceIntroStage = player.querySelector('[data-test-stage="practice-intro"]');
+  const testIntroStage = player.querySelector('[data-test-stage="test-intro"]');
   const loadingStage = player.querySelector('[data-test-stage="loading"]');
   const fullscreenStartButton = player.querySelector("[data-test-fullscreen-start]");
   const practiceStartButton = player.querySelector("[data-test-practice-start]");
   const endTestButton = player.querySelector("[data-test-end]");
   const returnUrl = player.dataset.returnUrl || player.dataset.dashboardUrl || "";
-  const endUrl = player.dataset.endUrl || "";
+  let endUrl = player.dataset.endUrl || "";
+
+  const isTestMode = () => activeMode === "test";
+  const getQuestions = () => (isTestMode() ? testQuestions : practiceQuestions);
+  const getActiveIntroStage = () => (isTestMode() ? testIntroStage : practiceIntroStage);
 
   const persistTestProgress = async () => {
-    if (mode !== "test" || !player.dataset.progressUrl) {
+    if (!isTestMode() || !player.dataset.progressUrl) {
       return;
     }
     try {
@@ -243,7 +333,7 @@ function initSectionPlayer() {
 
   const syncFullscreenTestUI = () => {
     const isFullscreenTestActive =
-      mode === "test" &&
+      isTestMode() &&
       testStarted &&
       document.fullscreenElement === player &&
       !finished;
@@ -258,7 +348,7 @@ function initSectionPlayer() {
   };
 
   const showStage = (stage) => {
-    [introStage, contextStage, questionStage, completeStage, loadingStage].forEach((node) => {
+    [practiceIntroStage, testIntroStage, contextStage, questionStage, completeStage, loadingStage].forEach((node) => {
       if (!node) return;
       if (node === stage) {
         node.removeAttribute("hidden");
@@ -284,7 +374,7 @@ function initSectionPlayer() {
 
   const updateTimer = () => {
     if (!timerEl) return;
-    if (mode !== "test") {
+    if (!isTestMode()) {
       if (!practiceStarted) {
         const suggestedSeconds = practiceTotal ? Math.max(1, Math.round(timeLimitSeconds / practiceTotal)) : 0;
         timerEl.textContent = suggestedSeconds
@@ -303,14 +393,18 @@ function initSectionPlayer() {
   };
 
   const updateProgress = () => {
+    const questions = getQuestions();
     const total = questions.length;
     const displayIndex = Math.min(currentIndex + 1, total || 1);
     if (progressEl) {
       progressEl.textContent = `Question ${displayIndex} of ${total}`;
     }
+    if (railProgressEl) {
+      railProgressEl.textContent = `${displayIndex} / ${total || 1}`;
+    }
     if (progressFillEl) {
       const progressPercent =
-        mode === "practice"
+        !isTestMode()
           ? (practiceTotal ? Math.min(Math.round((practiceSolved / practiceTotal) * 100), 100) : 0)
           : total
             ? Math.max(1, Math.round((displayIndex / total) * 100))
@@ -318,9 +412,82 @@ function initSectionPlayer() {
       progressFillEl.style.width = `${progressPercent}%`;
       progressFillEl.parentElement?.setAttribute("aria-valuenow", String(progressPercent));
     }
-    if (practiceProgressCopyEl && mode === "practice") {
+    if (practiceProgressCopyEl && !isTestMode()) {
       practiceProgressCopyEl.textContent = `${practiceSolved} of ${practiceTotal} practice questions solved`;
     }
+  };
+
+  const syncModeUI = () => {
+    if (practiceProgressWrapEl) {
+      if (isTestMode()) {
+        practiceProgressWrapEl.setAttribute("hidden", "");
+      } else {
+        practiceProgressWrapEl.removeAttribute("hidden");
+      }
+    }
+    if (modeCopyEl) {
+      modeCopyEl.textContent = isTestMode() ? (modeCopyEl.dataset.testCopy || "") : (modeCopyEl.dataset.practiceCopy || "");
+    }
+    if (railPhaseEl) {
+      railPhaseEl.textContent = isTestMode() ? "Test" : "Practice";
+    }
+    modeButtons.forEach((button) => {
+      const selected = button.dataset.playerMode === activeMode;
+      button.classList.toggle("button", selected);
+      button.classList.toggle("button-secondary", !selected);
+      button.setAttribute("aria-selected", selected ? "true" : "false");
+    });
+  };
+
+  const resetForMode = () => {
+    currentIndex = 0;
+    correctCount = 0;
+    finished = false;
+    testStarted = false;
+    submittedAnswers.length = 0;
+    if (timerInterval) {
+      window.clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    if (practiceTimerInterval) {
+      window.clearInterval(practiceTimerInterval);
+      practiceTimerInterval = null;
+    }
+    if (isTestMode()) {
+      practiceStarted = false;
+      practiceElapsedSeconds = 0;
+    }
+    hideFeedback();
+    syncModeUI();
+    syncFullscreenTestUI();
+    updateProgress();
+    updateTimer();
+    showStage(getActiveIntroStage());
+  };
+
+  const loadTestSetup = async () => {
+    if (testSetupLoaded) {
+      return true;
+    }
+    const response = await fetch(player.dataset.testSetupUrl, {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": getCookie("csrftoken"),
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.detail || "Could not start test mode.");
+    }
+    testQuestions = payload.previews || [];
+    player.dataset.submitUrl = payload.submitUrl || "";
+    player.dataset.progressUrl = payload.progressUrl || "";
+    player.dataset.attemptId = payload.attemptId || "";
+    player.dataset.endUrl = payload.endUrl || "";
+    endUrl = payload.endUrl || "";
+    testSetupLoaded = true;
+    return true;
   };
 
   const syncPracticeProgress = async () => {
@@ -354,14 +521,15 @@ function initSectionPlayer() {
       window.clearInterval(practiceTimerInterval);
     }
     if (completeSummaryEl) {
+      const questions = getQuestions();
       const base = `You answered ${correctCount} out of ${questions.length} correctly.`;
       completeSummaryEl.textContent =
-        mode === "practice"
+        !isTestMode()
           ? `${base} Practice mode shows immediate feedback after each answer.`
           : `${base} Test mode finished without per-question feedback.`;
     }
     hideFeedback();
-    if (mode === "test" && player.dataset.submitUrl) {
+    if (isTestMode() && player.dataset.submitUrl) {
       window.showPageLoader?.();
       if (completeSummaryEl) {
         completeSummaryEl.textContent = "Saving your section test result...";
@@ -421,6 +589,7 @@ function initSectionPlayer() {
   };
 
   const renderQuestion = () => {
+    const questions = getQuestions();
     const item = questions[currentIndex];
     if (!item) {
       finishPlayer();
@@ -433,7 +602,15 @@ function initSectionPlayer() {
       seedEl.textContent = item.seed || "";
     }
     if (contextEl) {
-      renderContext(contextEl, item);
+      if (isTestMode() && item.reveal_mode === "question_only") {
+        contextEl.innerHTML = "";
+        const hiddenPrompt = document.createElement("p");
+        hiddenPrompt.className = "muted";
+        hiddenPrompt.textContent = "Question hidden. Click to reveal and answer from memory.";
+        contextEl.appendChild(hiddenPrompt);
+      } else {
+        renderContext(contextEl, item);
+      }
     }
     if (questionEl) {
       questionEl.textContent = item.question_text || item.summary || "";
@@ -446,7 +623,7 @@ function initSectionPlayer() {
         button.className = "answer-option";
         button.textContent = option;
         button.addEventListener("click", () => {
-          if (mode === "practice") {
+          if (!isTestMode()) {
             optionsEl.querySelectorAll(".answer-option").forEach((node) => {
               node.classList.remove("is-selected-correct", "is-selected-wrong");
             });
@@ -457,7 +634,7 @@ function initSectionPlayer() {
             correctCount += 1;
           }
 
-          if (mode === "practice") {
+          if (!isTestMode()) {
             if (isCorrect) {
               button.classList.add("is-selected-correct");
               practiceSolved += 1;
@@ -493,6 +670,16 @@ function initSectionPlayer() {
       });
     }
 
+    if (contextHelperEl) {
+      contextHelperEl.textContent =
+        isTestMode() && item.reveal_mode === "question_only"
+          ? "Click to reveal the question."
+          : "Click the context card to reveal the question.";
+    }
+    if (isTestMode()) {
+      showStage(contextStage);
+      return;
+    }
     if (item.reveal_mode === "question_only") {
       showStage(questionStage);
       return;
@@ -504,45 +691,74 @@ function initSectionPlayer() {
     showStage(questionStage);
   });
 
-  if (mode === "test" && timerEl && remainingSeconds > 0) {
-    endTestButton?.addEventListener("click", () => {
-      redirectToPracticeAfterEnd();
-    });
-    document.addEventListener("fullscreenchange", syncFullscreenTestUI);
-    fullscreenStartButton?.addEventListener("click", async () => {
-      window.showPageLoader?.();
-      const enteredFullscreen = await requestFullscreenFor(player);
-      if (!enteredFullscreen) {
-        window.hidePageLoader?.();
-        showFeedback("Fullscreen is required to start test mode.", "wrong");
+  endTestButton?.addEventListener("click", () => {
+    redirectToPracticeAfterEnd();
+  });
+
+  document.addEventListener("fullscreenchange", syncFullscreenTestUI);
+
+  modeButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const nextMode = button.dataset.playerMode || "practice";
+      if (nextMode === activeMode) {
         return;
       }
-      testStarted = true;
-      hideFeedback();
-      syncFullscreenTestUI();
-      updateProgress();
-      updateTimer();
-      timerInterval = window.setInterval(() => {
-        remainingSeconds -= 1;
-        updateTimer();
-        if (remainingSeconds <= 0) {
-          finishPlayer();
-        }
-      }, 1000);
-      renderQuestion();
-      window.hidePageLoader?.();
+      activeMode = nextMode;
+      player.dataset.mode = activeMode;
+      resetForMode();
     });
+  });
+
+  fullscreenStartButton?.addEventListener("click", async () => {
+    window.showPageLoader?.();
+    try {
+      await loadTestSetup();
+    } catch (error) {
+      window.hidePageLoader?.();
+      showFeedback(error.message || "Could not start test mode.", "wrong");
+      return;
+    }
+    const enteredFullscreen = await requestFullscreenFor(player);
+    if (!enteredFullscreen) {
+      window.hidePageLoader?.();
+      showFeedback("Fullscreen is required to start test mode.", "wrong");
+      return;
+    }
+    activeMode = "test";
+    player.dataset.mode = activeMode;
+    currentIndex = 0;
+    correctCount = 0;
+    remainingSeconds = timeLimitSeconds;
+    finished = false;
+    testStarted = true;
+    hideFeedback();
+    syncModeUI();
     syncFullscreenTestUI();
-    showStage(introStage);
-    return;
-  }
+    updateProgress();
+    updateTimer();
+    timerInterval = window.setInterval(() => {
+      remainingSeconds -= 1;
+      updateTimer();
+      if (remainingSeconds <= 0) {
+        finishPlayer();
+      }
+    }, 1000);
+    renderQuestion();
+    await waitForNextPaint();
+    await waitForNextPaint();
+    window.hidePageLoader?.();
+  });
 
   practiceStartButton?.addEventListener("click", () => {
     if (practiceStarted) {
       return;
     }
+    activeMode = "practice";
+    player.dataset.mode = activeMode;
     practiceStarted = true;
     practiceElapsedSeconds = 0;
+    submittedAnswers.length = 0;
+    syncModeUI();
     updateProgress();
     updateTimer();
     practiceTimerInterval = window.setInterval(() => {
@@ -552,12 +768,13 @@ function initSectionPlayer() {
     renderQuestion();
   });
 
+  syncModeUI();
   updateProgress();
   updateTimer();
-  showStage(introStage);
+  showStage(getActiveIntroStage());
 
   window.addEventListener("beforeunload", () => {
-    if (mode !== "test" || !player.dataset.progressUrl || finished) return;
+    if (!isTestMode() || !player.dataset.progressUrl || finished) return;
     fetch(player.dataset.progressUrl, {
       method: "POST",
       keepalive: true,
@@ -591,23 +808,33 @@ function initFullTestPlayer() {
   let remainingSeconds = 0;
   let timerInterval = null;
   let activeQuestion = null;
+  let currentSectionRuntime = null;
   const collectedTestAnswers = [];
   let isSubmitting = false;
+  let shouldAdvanceDirectlyToNextSection = false;
 
   const timerEl = player.querySelector("[data-full-timer]");
   const titleEl = player.querySelector("[data-full-section-title]");
   const descriptionEl = player.querySelector("[data-full-section-description]");
   const instructionEl = player.querySelector("[data-full-instruction]");
   const phaseLabelEl = player.querySelector("[data-full-phase-label]");
+  const railSectionEl = player.querySelector("[data-full-rail-section]");
+  const railPhaseEl = player.querySelector("[data-full-rail-phase]");
+  const railProgressEl = player.querySelector("[data-full-rail-progress]");
+  const railProgressFillEl = player.querySelector("[data-full-rail-progress-fill]");
   const feedbackEl = player.querySelector("[data-full-feedback]");
   const contextEl = player.querySelector("[data-full-context]");
   const questionEl = player.querySelector("[data-full-question]");
   const optionsEl = player.querySelector("[data-full-options]");
+  const inlineFeedbackEl = player.querySelector("[data-full-inline-feedback]");
   const startButton = player.querySelector("[data-full-start]");
   const fullscreenStartButton = player.querySelector("[data-full-fullscreen-start]");
   const nextPhaseButton = player.querySelector("[data-full-next-phase]");
   const skipPracticeButton = player.querySelector("[data-full-skip-practice]");
   const endTestButton = player.querySelector("[data-full-end-test]");
+  const endModalEl = player.querySelector("[data-full-end-modal]");
+  const endModalCancelButton = player.querySelector("[data-full-end-cancel]");
+  const endModalConfirmButton = player.querySelector("[data-full-end-confirm]");
 
   const persistFullTestProgress = async () => {
     if (!player.dataset.progressUrl) {
@@ -659,10 +886,68 @@ function initFullTestPlayer() {
 
   const getCurrentSection = () => sections[sectionIndex];
   const getCurrentQuestionCount = () =>
-    phase === "practice" ? getCurrentSection()?.practice_count || 0 : getCurrentSection()?.test_count || 0;
+    phase === "practice"
+      ? currentSectionRuntime?.practice_questions?.length || getCurrentSection()?.practice_count || 0
+      : currentSectionRuntime?.test_questions?.length || getCurrentSection()?.test_count || 0;
+  const getCurrentSectionAnswers = () => {
+    const sectionId = getCurrentSection()?.section_id;
+    if (!sectionId) {
+      return null;
+    }
+    let entry = collectedTestAnswers.find((row) => row.section_id === sectionId);
+    if (!entry) {
+      entry = { section_id: sectionId, answers: [] };
+      collectedTestAnswers.push(entry);
+    }
+    return entry;
+  };
+  const getActiveQuestions = () => {
+    if (!currentSectionRuntime) {
+      return [];
+    }
+    return phase === "practice" ? currentSectionRuntime.practice_questions || [] : currentSectionRuntime.test_questions || [];
+  };
+  const getRailPhaseLabel = () => {
+    if (phase === "practice") {
+      return "Practice";
+    }
+    if (phase === "test") {
+      return "Timed test";
+    }
+    if (phase === "test-intro") {
+      return "Ready";
+    }
+    return "Intro";
+  };
+  const updateRail = () => {
+    const section = getCurrentSection();
+    const currentQuestionCount = getCurrentQuestionCount();
+    let progressLabel = `${Math.min(sectionIndex + 1, sections.length)} / ${sections.length}`;
+    let progressRatio = sections.length ? (sectionIndex + 1) / sections.length : 0;
+
+    if ((phase === "practice" || phase === "test") && currentQuestionCount > 0) {
+      const currentStep = Math.min(questionIndex + 1, currentQuestionCount);
+      progressLabel = `${currentStep} / ${currentQuestionCount}`;
+      progressRatio = currentStep / currentQuestionCount;
+    }
+
+    if (railSectionEl) {
+      railSectionEl.textContent = section?.title || "Section";
+    }
+    if (railPhaseEl) {
+      railPhaseEl.textContent = getRailPhaseLabel();
+    }
+    if (railProgressEl) {
+      railProgressEl.textContent = progressLabel;
+    }
+    if (railProgressFillEl) {
+      railProgressFillEl.style.width = `${Math.max(0, Math.min(progressRatio, 1)) * 100}%`;
+    }
+  };
 
   const showStage = (stage) => {
     updateSkipPracticeButton();
+    updateRail();
     allStages.forEach((node) => {
       if (!node) return;
       if (node === stage) {
@@ -687,16 +972,50 @@ function initFullTestPlayer() {
     feedbackEl.className = "feedback-banner";
   };
 
+  const hideInlineFeedback = () => {
+    if (!inlineFeedbackEl) return;
+    inlineFeedbackEl.setAttribute("hidden", "");
+    inlineFeedbackEl.textContent = "";
+    inlineFeedbackEl.className = "section-inline-feedback full-test-inline-feedback";
+  };
+
+  const showInlineFeedback = (message, type) => {
+    if (!inlineFeedbackEl) return;
+    inlineFeedbackEl.textContent = message;
+    inlineFeedbackEl.className = `section-inline-feedback full-test-inline-feedback feedback-${type}`;
+    inlineFeedbackEl.removeAttribute("hidden");
+  };
+
+  const openEndModal = () => {
+    if (!endModalEl) {
+      return;
+    }
+    endModalEl.removeAttribute("hidden");
+    document.body.classList.add("has-open-modal");
+    endModalConfirmButton?.focus();
+  };
+
+  const closeEndModal = () => {
+    if (!endModalEl) {
+      return;
+    }
+    endModalEl.setAttribute("hidden", "");
+    document.body.classList.remove("has-open-modal");
+    endTestButton?.focus();
+  };
+
   const updateTimer = () => {
     if (!timerEl) return;
     if (phase !== "test") {
       timerEl.setAttribute("hidden", "");
+      updateRail();
       return;
     }
     timerEl.removeAttribute("hidden");
     const minutes = Math.floor(remainingSeconds / 60);
     const seconds = remainingSeconds % 60;
-    timerEl.textContent = `Time left ${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    timerEl.textContent = `• ${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    updateRail();
   };
 
   const stopTimer = () => {
@@ -719,33 +1038,42 @@ function initFullTestPlayer() {
     }, 1000);
   };
 
-  const loadQuestion = async () => {
+  const loadSectionRuntime = async (force = false) => {
+    const section = getCurrentSection();
+    if (!section) {
+      throw new Error("Could not load the current test section.");
+    }
+    if (!force && currentSectionRuntime?.section_id === section.section_id) {
+      return currentSectionRuntime;
+    }
     const params = new URLSearchParams({
       section_index: String(sectionIndex),
-      phase,
-      question_index: String(questionIndex),
     });
-    const response = await fetch(`${player.dataset.questionUrl}?${params.toString()}`, {
+    const response = await fetch(`${player.dataset.sectionUrl}?${params.toString()}`, {
       headers: {
         "X-Requested-With": "XMLHttpRequest",
       },
     });
     const payload = await response.json();
     if (!response.ok) {
-      throw new Error(payload.detail || "Could not load the next question.");
+      throw new Error(payload.detail || "Could not load the full test section.");
     }
+    currentSectionRuntime = payload;
     return payload;
   };
 
   const renderQuestion = async () => {
-    if (questionIndex >= getCurrentQuestionCount()) {
-      finishPhase();
+    await loadSectionRuntime();
+    const questions = getActiveQuestions();
+    if (questionIndex >= questions.length) {
+      await finishPhase();
       return;
     }
 
     try {
-      activeQuestion = await loadQuestion();
+      activeQuestion = questions[questionIndex];
       hideFeedback();
+      hideInlineFeedback();
       if (contextEl) renderContext(contextEl, activeQuestion);
       if (questionEl) questionEl.textContent = activeQuestion.question_text || activeQuestion.summary || "";
       if (optionsEl) {
@@ -760,21 +1088,39 @@ function initFullTestPlayer() {
             const isCorrect = selected === String(activeQuestion.correct_answer || "");
 
             if (phase === "practice") {
+              const answerButtons = Array.from(optionsEl.querySelectorAll(".answer-option"));
+              answerButtons.forEach((node) => {
+                node.disabled = true;
+                node.classList.remove("is-selected-correct", "is-selected-wrong", "is-correct-answer");
+              });
+              answerButtons.forEach((node) => {
+                const nodeText = String(node.textContent || "");
+                if (nodeText === selected) {
+                  node.classList.add(isCorrect ? "is-selected-correct" : "is-selected-wrong");
+                }
+                if (nodeText === String(activeQuestion.correct_answer || "")) {
+                  node.classList.add("is-correct-answer");
+                }
+              });
               if (isCorrect) {
-                showFeedback("Correct.", "correct");
+                showInlineFeedback("Correct.", "correct");
                 window.setTimeout(() => {
-                  hideFeedback();
+                  hideInlineFeedback();
                   questionIndex += 1;
-                  renderQuestion();
+                  void renderQuestion();
                 }, 900);
               } else {
-                showFeedback("Wrong. Try again.", "wrong");
+                showInlineFeedback(`Wrong. The correct answer is ${activeQuestion.correct_answer || ""}.`, "wrong");
+                window.setTimeout(() => {
+                  hideInlineFeedback();
+                  questionIndex += 1;
+                  void renderQuestion();
+                }, 1200);
               }
               return;
             }
 
-            const sectionId = getCurrentSection()?.section_id;
-            const entry = collectedTestAnswers.find((row) => row.section_id === sectionId);
+            const entry = getCurrentSectionAnswers();
             const answerRow = { question_index: questionIndex, selected_option: selected };
             if (entry) {
               const existingIndex = entry.answers.findIndex((row) => row.question_index === questionIndex);
@@ -783,18 +1129,15 @@ function initFullTestPlayer() {
               } else {
                 entry.answers.push(answerRow);
               }
-            } else if (sectionId) {
-              collectedTestAnswers.push({ section_id: sectionId, answers: [answerRow] });
             }
 
             persistFullTestProgress();
             questionIndex += 1;
-            renderQuestion();
+            void renderQuestion();
           });
           optionsEl.appendChild(button);
         });
       }
-      showStage(contextStage);
       if (activeQuestion.reveal_mode === "question_only") {
         showStage(questionStage);
       } else {
@@ -828,6 +1171,7 @@ function initFullTestPlayer() {
     if (startButton) {
       startButton.textContent = "Enter fullscreen and start full test";
     }
+    updateRail();
     showStage(introStage);
   };
 
@@ -838,7 +1182,43 @@ function initFullTestPlayer() {
     showStage(fullscreenStage);
   };
 
-  const finishPhase = () => {
+  const startSectionPractice = async () => {
+    hideFeedback();
+    hideInlineFeedback();
+    questionIndex = 0;
+    phase = "practice";
+    currentSectionRuntime = null;
+    shouldAdvanceDirectlyToNextSection = false;
+    updateEndTestButton();
+    updateSkipPracticeButton();
+    updateTimer();
+    await loadSectionRuntime(true);
+    await renderQuestion();
+    await waitForNextPaint();
+    await waitForNextPaint();
+  };
+
+  const submitCurrentSection = async () => {
+    const section = getCurrentSection();
+    if (!section?.section_id || !player.dataset.sectionSubmitUrl) {
+      return;
+    }
+    const entry = getCurrentSectionAnswers();
+    const response = await fetch(player.dataset.sectionSubmitUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRFToken": getCookie("csrftoken"),
+      },
+      body: JSON.stringify({ section_id: section.section_id, answers: entry?.answers || [] }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.detail || "Could not save the completed section.");
+    }
+  };
+
+  const finishPhase = async () => {
     stopTimer();
     const section = getCurrentSection();
     if (!section) {
@@ -848,6 +1228,8 @@ function initFullTestPlayer() {
 
     if (phase === "practice") {
       phase = "test-intro";
+      questionIndex = 0;
+      shouldAdvanceDirectlyToNextSection = false;
       updateEndTestButton();
       updateSkipPracticeButton();
       if (sectionCompleteLabelEl) sectionCompleteLabelEl.textContent = "Practice complete";
@@ -858,41 +1240,57 @@ function initFullTestPlayer() {
       return;
     }
 
+    window.showPageLoader?.();
+    try {
+      await submitCurrentSection();
+    } catch (error) {
+      window.hidePageLoader?.();
+      if (completeSummaryEl) {
+        completeSummaryEl.textContent = error.message || "Could not save the completed section.";
+      }
+      showStage(completeStage);
+      return;
+    }
+
     sectionIndex += 1;
+    questionIndex = 0;
+    currentSectionRuntime = null;
     if (sectionIndex >= sections.length) {
-      submitFullTest();
+      await submitFullTest();
       return;
     }
 
     phase = "intro";
+    shouldAdvanceDirectlyToNextSection = true;
     if (sectionCompleteLabelEl) sectionCompleteLabelEl.textContent = "Section complete";
     if (sectionCompleteTitleEl) sectionCompleteTitleEl.textContent = `${section.title} test complete`;
-    if (sectionCompleteCopyEl) sectionCompleteCopyEl.textContent = "Move on to the next section instructions.";
+    if (sectionCompleteCopyEl) sectionCompleteCopyEl.textContent = "Continue directly into the next section practice flow.";
     if (nextPhaseButton) nextPhaseButton.textContent = "Next section";
     showStage(sectionCompleteStage);
+    window.hidePageLoader?.();
   };
 
   startButton?.addEventListener("click", async () => {
+    window.setButtonLoading?.(startButton);
     window.showPageLoader?.();
     const enteredFullscreen = await requestFullscreenFor(player);
     if (!enteredFullscreen) {
+      window.clearButtonLoading?.(startButton);
       window.hidePageLoader?.();
       showFeedback("Fullscreen is required to start the full test.", "wrong");
       return;
     }
-    hideFeedback();
-    questionIndex = 0;
-    phase = "practice";
-    updateEndTestButton();
-    updateTimer();
-    await renderQuestion();
+    await startSectionPractice();
+    window.clearButtonLoading?.(startButton);
     window.hidePageLoader?.();
   });
 
   fullscreenStartButton?.addEventListener("click", async () => {
+    window.setButtonLoading?.(fullscreenStartButton);
     window.showPageLoader?.();
     const enteredFullscreen = await requestFullscreenFor(player);
     if (!enteredFullscreen) {
+      window.clearButtonLoading?.(fullscreenStartButton);
       window.hidePageLoader?.();
       showFeedback("Fullscreen is required to start timed test mode.", "wrong");
       return;
@@ -900,37 +1298,73 @@ function initFullTestPlayer() {
     hideFeedback();
     questionIndex = 0;
     phase = "test";
+    currentSectionRuntime = null;
     updateEndTestButton();
+    await loadSectionRuntime(true);
     startTimer();
     await renderQuestion();
+    await waitForNextPaint();
+    await waitForNextPaint();
+    window.clearButtonLoading?.(fullscreenStartButton);
     window.hidePageLoader?.();
   });
 
-  nextPhaseButton?.addEventListener("click", () => {
+  nextPhaseButton?.addEventListener("click", async () => {
+    window.setButtonLoading?.(nextPhaseButton);
     if (phase === "test-intro") {
       if (document.fullscreenElement) {
         questionIndex = 0;
         phase = "test";
+        currentSectionRuntime = null;
         updateEndTestButton();
+        window.showPageLoader?.();
+        await loadSectionRuntime(true);
         startTimer();
-        renderQuestion();
+        await renderQuestion();
+        await waitForNextPaint();
+        await waitForNextPaint();
+        window.clearButtonLoading?.(nextPhaseButton);
+        window.hidePageLoader?.();
         return;
       }
+      window.clearButtonLoading?.(nextPhaseButton);
       renderFullscreenStage();
+      return;
+    }
+    if (shouldAdvanceDirectlyToNextSection) {
+      window.showPageLoader?.();
+      if (!document.fullscreenElement) {
+        const enteredFullscreen = await requestFullscreenFor(player);
+        if (!enteredFullscreen) {
+          window.clearButtonLoading?.(nextPhaseButton);
+          window.hidePageLoader?.();
+          showFeedback("Fullscreen is required to continue into the next section.", "wrong");
+          return;
+        }
+      }
+      await startSectionPractice();
+      window.clearButtonLoading?.(nextPhaseButton);
+      window.hidePageLoader?.();
       return;
     }
     updateEndTestButton();
     updateSkipPracticeButton();
+    window.clearButtonLoading?.(nextPhaseButton);
     renderIntro();
   });
 
-  skipPracticeButton?.addEventListener("click", () => {
+  skipPracticeButton?.addEventListener("click", async () => {
     if (phase !== "practice") {
       return;
     }
+    window.setButtonLoading?.(skipPracticeButton);
+    window.showPageLoader?.();
     hideFeedback();
     questionIndex += 1;
-    renderQuestion();
+    await renderQuestion();
+    await waitForNextPaint();
+    window.clearButtonLoading?.(skipPracticeButton);
+    window.hidePageLoader?.();
   });
 
   contextStage?.addEventListener("click", () => {
@@ -985,8 +1419,32 @@ function initFullTestPlayer() {
   }
 
   endTestButton?.addEventListener("click", () => {
-    if (!confirm("End the test now? Your score so far will be saved.")) return;
-    submitFullTest();
+    openEndModal();
+  });
+
+  endModalCancelButton?.addEventListener("click", () => {
+    closeEndModal();
+  });
+
+  endModalEl?.addEventListener("click", (event) => {
+    if (event.target === endModalEl) {
+      closeEndModal();
+    }
+  });
+
+  endModalConfirmButton?.addEventListener("click", () => {
+    closeEndModal();
+    window.setButtonLoading?.(endTestButton);
+    window.showPageLoader?.();
+    void submitFullTest().finally(() => {
+      window.clearButtonLoading?.(endTestButton);
+    });
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && endModalEl && !endModalEl.hasAttribute("hidden")) {
+      closeEndModal();
+    }
   });
 
   window.addEventListener("beforeunload", () => {
@@ -1003,6 +1461,7 @@ function initFullTestPlayer() {
   });
 
   renderIntro();
+  updateRail();
 }
 
 function renderContext(container, item) {
@@ -1109,6 +1568,14 @@ async function requestFullscreenFor(element) {
   } catch (error) {
     return false;
   }
+}
+
+function waitForNextPaint() {
+  return new Promise((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(resolve);
+    });
+  });
 }
 
 function renderLetterSvg(letter, mirrored) {
