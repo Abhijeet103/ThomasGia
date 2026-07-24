@@ -17,10 +17,10 @@ QUESTION_BANK_DB_PATH = Path(os.getenv("QUESTION_BANK_DB_PATH", str(DEFAULT_DB_P
 init_db(QUESTION_BANK_DB_PATH)
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-secret-key")
-DEBUG = os.getenv("DJANGO_DEBUG", "True").lower() == "true"
 DJANGO_ENV = os.getenv("DJANGO_ENV", "production").strip().lower()
 IS_DEVELOPMENT = DJANGO_ENV == "development"
 IS_PRODUCTION = DJANGO_ENV == "production"
+DEBUG = os.getenv("DJANGO_DEBUG", "True" if IS_DEVELOPMENT else "False").lower() == "true"
 ALLOWED_HOSTS = [host.strip() for host in os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,98.94.81.198").split(",") if host.strip()]
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()

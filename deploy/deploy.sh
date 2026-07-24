@@ -16,6 +16,9 @@ pip install -r requirements.txt
 echo "Configured database target:"
 python manage.py shell -c "from django.conf import settings; db = settings.DATABASES['default']; print(f\"  engine={db['ENGINE']} host={db.get('HOST') or 'local'} name={db['NAME']}\")"
 
+echo "Validating production settings..."
+python manage.py shell -c "from django.conf import settings; assert not (settings.IS_PRODUCTION and settings.DEBUG), 'DJANGO_DEBUG must be False in production'; print(f'  environment={settings.DJANGO_ENV} debug={settings.DEBUG}')"
+
 echo "Running migrations..."
 python manage.py migrate
 
