@@ -10,7 +10,7 @@ from prepgia.schema import DEFAULT_DB_PATH, init_db
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(ROOT_DIR / ".env")
+load_dotenv(ROOT_DIR / ".env", override=True)
 DATA_DIR = ROOT_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 QUESTION_BANK_DB_PATH = Path(os.getenv("QUESTION_BANK_DB_PATH", str(DEFAULT_DB_PATH)))

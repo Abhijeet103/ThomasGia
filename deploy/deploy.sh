@@ -13,6 +13,9 @@ echo "Activating venv and installing dependencies..."
 source .venv/bin/activate
 pip install -r requirements.txt
 
+echo "Configured database target:"
+python manage.py shell -c "from django.conf import settings; db = settings.DATABASES['default']; print(f\"  engine={db['ENGINE']} host={db.get('HOST') or 'local'} name={db['NAME']}\")"
+
 echo "Running migrations..."
 python manage.py migrate
 
