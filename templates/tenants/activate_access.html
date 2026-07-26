@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="content-section">
+  <div class="login-layout">
+    <article class="card login-panel">
+      <span class="eyebrow">Institution access</span>
+      <h1 class="section-title">Join {{ tenant.name }}</h1>
+      {% if requires_code %}
+        <p class="section-copy">
+          Enter the enrollment code shared by your institution. Your access period starts when the code is accepted.
+        </p>
+        <form method="post" class="login-form" data-btn-loader>
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{{ next }}">
+          <label class="form-field" for="enrollment-code">
+            <span>Enrollment code</span>
+            <input
+              id="enrollment-code"
+              name="enrollment_code"
+              type="text"
+              required
+              autocomplete="one-time-code"
+              placeholder="MM-XXXXXXXX"
+            >
+          </label>
+          <button type="submit" class="button login-submit">Activate access</button>
+        </form>
+      {% else %}
+        <p class="section-copy">
+          Your institution access has expired or was suspended. Contact your institution administrator to renew it.
+        </p>
+      {% endif %}
+    </article>
+  </div>
+</section>
+{% endblock %}

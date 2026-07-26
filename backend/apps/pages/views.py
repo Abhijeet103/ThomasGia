@@ -25,6 +25,7 @@ from backend.apps.billing.services import (
     sync_user_subscription_access,
 )
 from backend.apps.tenants.utils import get_default_tenant
+from backend.apps.tenants.services import is_institution_tenant, tenant_allows_assessment
 from backend.apps.assessments.config import (
     ASSESSMENT_CCAT,
     ASSESSMENT_PREPGIA,
@@ -180,6 +181,12 @@ def _merge_track_languages(base_languages, override_languages) -> list[str]:
     return merged
 
 
+def _effective_track_visibility(tenant, assessment_key: str, configured_visibility: str) -> str:
+    if not tenant_allows_assessment(tenant, assessment_key):
+        return PracticeTrackVisibility.HIDDEN
+    return configured_visibility
+
+
 def _build_practice_assessment_cards(request) -> list[dict]:
     tenant = _current_tenant(request)
     user = request.user if request.user.is_authenticated else None
@@ -206,10 +213,14 @@ def _build_practice_assessment_cards(request) -> list[dict]:
     for base in base_cards:
         seen.add(base["key"])
         override = overrides.get(base["key"])
-        visibility_state = (
-            override.visibility_state
-            if override
-            else base.get("default_visibility_state", PracticeTrackVisibility.ACCESSIBLE)
+        visibility_state = _effective_track_visibility(
+            tenant,
+            base["key"],
+            (
+                override.visibility_state
+                if override
+                else base.get("default_visibility_state", PracticeTrackVisibility.ACCESSIBLE)
+            ),
         )
         if visibility_state == PracticeTrackVisibility.HIDDEN:
             continue
@@ -235,7 +246,12 @@ def _build_practice_assessment_cards(request) -> list[dict]:
         )
 
     for assessment_key, override in overrides.items():
-        if assessment_key in seen or override.visibility_state == PracticeTrackVisibility.HIDDEN:
+        visibility_state = _effective_track_visibility(
+            tenant,
+            assessment_key,
+            override.visibility_state,
+        )
+        if assessment_key in seen or visibility_state == PracticeTrackVisibility.HIDDEN:
             continue
         cards.append(
             {
@@ -246,9 +262,9 @@ def _build_practice_assessment_cards(request) -> list[dict]:
                 "trust_line": override.trust_line,
                 "available_languages": override.available_languages or [],
                 "route_enabled": False,
-                "visibility_state": override.visibility_state,
-                "status_label": "Live" if override.visibility_state == PracticeTrackVisibility.ACCESSIBLE else "Coming soon",
-                "status_class": "track-live" if override.visibility_state == PracticeTrackVisibility.ACCESSIBLE else "track-upcoming",
+                "visibility_state": visibility_state,
+                "status_label": "Live" if visibility_state == PracticeTrackVisibility.ACCESSIBLE else "Coming soon",
+                "status_class": "track-live" if visibility_state == PracticeTrackVisibility.ACCESSIBLE else "track-upcoming",
                 "can_open": False,
                 "open_url": "",
                 "notify_form": TrackWaitlistForm(initial={"assessment_type": assessment_key, "next": _notify_redirect_target(request)}),
@@ -540,15 +556,31 @@ class AssessmentPracticePageView(TemplateView):
         from backend.apps.assessments.models import Attempt, AttemptMode
         context = super().get_context_data(**kwargs)
         assessment_type = self.kwargs["assessment_slug"]
+        tenant = _current_tenant(self.request)
+        if not tenant_allows_assessment(tenant, assessment_type):
+            raise Http404("Assessment not available for this institution.")
         assessment_config = get_assessment_config(assessment_type)
         sections = _practice_section_cards(self.request, assessment_type)
         user = self.request.user
-        if user.is_authenticated and getattr(user, "role", UserRole.FREE) == UserRole.PAID:
+        if user.is_authenticated and (
+            getattr(user, "role", UserRole.FREE) == UserRole.PAID
+            or is_institution_tenant(tenant)
+        ):
             full_test_attempts_left = None
             module_test_attempts_left = None
         elif user.is_authenticated:
-            full_used = Attempt.objects.filter(user=user, mode=AttemptMode.FULL_TEST, assessment_type=assessment_type).count()
-            module_used = Attempt.objects.filter(user=user, mode=AttemptMode.SECTION, assessment_type=assessment_type).count()
+            full_used = Attempt.objects.filter(
+                user=user,
+                tenant=tenant,
+                mode=AttemptMode.FULL_TEST,
+                assessment_type=assessment_type,
+            ).count()
+            module_used = Attempt.objects.filter(
+                user=user,
+                tenant=tenant,
+                mode=AttemptMode.SECTION,
+                assessment_type=assessment_type,
+            ).count()
             full_test_attempts_left = max(0, FREE_FULL_TEST_LIMIT - full_used)
             module_test_attempts_left = max(0, FREE_SECTION_TEST_LIMIT - module_used)
         else:
@@ -604,6 +636,8 @@ class FullTestPageView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         assessment_type = self.kwargs.get("assessment_slug", ASSESSMENT_PREPGIA)
+        if not tenant_allows_assessment(_current_tenant(self.request), assessment_type):
+            raise Http404("Assessment not available for this institution.")
         assessment_config = get_assessment_config(assessment_type)
         section_meta = {module["key"]: {"title": module["title"], "description": module["description"]} for module in assessment_config["modules"]}
         instructions = {module["key"]: module["instruction"] for module in assessment_config["modules"]}
@@ -648,6 +682,9 @@ class SectionDetailPageView(TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         assessment_type = self.kwargs.get("assessment_slug", ASSESSMENT_PREPGIA)
+        tenant = _current_tenant(self.request)
+        if not tenant_allows_assessment(tenant, assessment_type):
+            raise Http404("Assessment not available for this institution.")
         assessment_config = get_assessment_config(assessment_type)
         slug = self.kwargs["slug"]
         try:
@@ -667,6 +704,7 @@ class SectionDetailPageView(TemplateView):
         if self.request.user.is_authenticated:
             progress = SectionProgress.objects.filter(
                 user=self.request.user,
+                tenant=tenant,
                 assessment_type=assessment_type,
                 section_type=section_type,
             ).first()
@@ -706,6 +744,8 @@ class SectionTestSetupView(LoginRequiredMixin, View):
 
     def post(self, request, *args, **kwargs):
         assessment_type = kwargs.get("assessment_slug", ASSESSMENT_PREPGIA)
+        if not tenant_allows_assessment(_current_tenant(request), assessment_type):
+            raise Http404("Assessment not available for this institution.")
         try:
             section_type = SectionType(kwargs["slug"])
         except ValueError as exc:
@@ -779,8 +819,10 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
             if card["visibility_state"] == PracticeTrackVisibility.ACCESSIBLE
         ]
         visible_dashboard_assessment_keys = [card["key"] for card in visible_dashboard_tracks]
+        tenant = _current_tenant(self.request)
         attempts = (
             self.request.user.attempts
+            .filter(tenant=tenant)
             .prefetch_related(
                 Prefetch(
                     "sections",
@@ -885,7 +927,7 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
         assessment_cards = []
         assessment_estimates = {}
         progress_rows = {}
-        for item in SectionProgress.objects.filter(user=self.request.user):
+        for item in SectionProgress.objects.filter(user=self.request.user, tenant=tenant):
             progress_rows.setdefault(item.assessment_type, []).append(item)
         track_by_key = {track["key"]: track for track in visible_dashboard_tracks}
         for assessment_key in visible_dashboard_assessment_keys:
@@ -1042,15 +1084,21 @@ def _section_cards(assessment_type: str):
 
 
 def _practice_section_cards(request, assessment_type: str):
+    tenant = _current_tenant(request)
     progress_by_section = {}
     active_attempts = {}
     if request.user.is_authenticated:
         progress_by_section = {
             item.section_type: item
-            for item in SectionProgress.objects.filter(user=request.user, assessment_type=assessment_type)
+            for item in SectionProgress.objects.filter(
+                user=request.user,
+                tenant=tenant,
+                assessment_type=assessment_type,
+            )
         }
         for attempt in (
             request.user.attempts.filter(
+                tenant=tenant,
                 assessment_type=assessment_type,
                 mode=AttemptMode.SECTION,
                 status__in=[AttemptStatus.CREATED, AttemptStatus.IN_PROGRESS],

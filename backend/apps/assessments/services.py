@@ -20,6 +20,8 @@ from backend.apps.assessments.config import (
     get_time_limit_seconds,
 )
 from prepgia.generators import SECTION_TYPES, generate_question
+from backend.apps.tenants.services import get_tenant_access, is_institution_tenant, tenant_allows_assessment
+from backend.apps.tenants.utils import get_current_tenant, get_current_tenant_slug
 
 from .models import Attempt, AttemptMode, AttemptSection, AttemptStatus, SectionProgress, SectionType
 
@@ -46,18 +48,37 @@ FREE_PRACTICE_QUESTION_LIMIT = 10
 SECTION_TIME_LIMITS = {section_type: get_time_limit_seconds(section_type) for section_type in SECTION_TYPES}
 
 def can_start_attempt(user: User, mode: str, assessment_type: str = ASSESSMENT_PREPGIA) -> AccessDecision:
+    tenant = get_current_tenant() or user.tenant
+    if is_institution_tenant(tenant):
+        access = get_tenant_access(tenant=tenant, user=user, auto_enroll=False)
+        if not access.allowed:
+            return AccessDecision(False, "Your institution access is not active.")
+        if not tenant_allows_assessment(tenant, assessment_type):
+            return AccessDecision(False, "This assessment is not included in your institution plan.")
+        return AccessDecision(True, "")
+
     if user.role == UserRole.PAID:
         return AccessDecision(True, "")
 
     if mode == AttemptMode.FULL_TEST:
-        used = Attempt.objects.filter(user=user, mode=AttemptMode.FULL_TEST, assessment_type=assessment_type).count()
+        used = Attempt.objects.filter(
+            user=user,
+            tenant=tenant,
+            mode=AttemptMode.FULL_TEST,
+            assessment_type=assessment_type,
+        ).count()
         if used >= FREE_FULL_TEST_LIMIT:
             return AccessDecision(False, f"Free users can take up to {FREE_FULL_TEST_LIMIT} full test. Upgrade to unlock unlimited access.")
         remaining = FREE_FULL_TEST_LIMIT - used
         return AccessDecision(True, f"Free tier: {remaining} full test remaining.")
 
     if mode == AttemptMode.SECTION:
-        used = Attempt.objects.filter(user=user, mode=AttemptMode.SECTION, assessment_type=assessment_type).count()
+        used = Attempt.objects.filter(
+            user=user,
+            tenant=tenant,
+            mode=AttemptMode.SECTION,
+            assessment_type=assessment_type,
+        ).count()
         if used >= FREE_SECTION_TEST_LIMIT:
             return AccessDecision(False, f"Free users can take up to {FREE_SECTION_TEST_LIMIT} module tests. Upgrade to unlock unlimited access.")
         remaining = FREE_SECTION_TEST_LIMIT - used
@@ -77,9 +98,10 @@ def create_attempt(
     if not decision.allowed:
         raise PermissionError(decision.message)
 
+    tenant = get_current_tenant() or user.tenant
     attempt = Attempt.objects.create(
         user=user,
-        tenant=user.tenant,
+        tenant=tenant,
         assessment_type=assessment_type,
         mode=mode,
         status=AttemptStatus.IN_PROGRESS,
@@ -146,9 +168,10 @@ def get_or_create_full_test_attempt(user: User, assessment_type: str = ASSESSMEN
         raise PermissionError(decision.message)
     assessment_config = get_assessment_config(assessment_type)
     full_test_practice_count = assessment_config["full_test_practice_count"]
+    tenant = get_current_tenant() or user.tenant
     attempt = Attempt.objects.create(
         user=user,
-        tenant=user.tenant,
+        tenant=tenant,
         assessment_type=assessment_type,
         mode=AttemptMode.FULL_TEST,
         status=AttemptStatus.IN_PROGRESS,
@@ -230,6 +253,7 @@ def get_or_create_section_attempt(
     active_attempt = (
         Attempt.objects.filter(
             user=user,
+            tenant=get_current_tenant() or user.tenant,
             assessment_type=resolved_assessment_type,
             mode=AttemptMode.SECTION,
             status__in=[AttemptStatus.CREATED, AttemptStatus.IN_PROGRESS],
@@ -611,7 +635,7 @@ def record_practice_progress(
 ) -> SectionProgress:
     resolved_assessment_type = assessment_type or get_module_assessment_type(section_type)
     progress, _ = SectionProgress.objects.get_or_create(
-        tenant=user.tenant,
+        tenant=get_current_tenant() or user.tenant,
         user=user,
         assessment_type=resolved_assessment_type,
         section_type=section_type,
@@ -630,7 +654,7 @@ def record_practice_progress(
 def record_test_progress(user: User, section_type: str, score: float, assessment_type: str | None = None) -> SectionProgress:
     resolved_assessment_type = assessment_type or get_module_assessment_type(section_type)
     progress, _ = SectionProgress.objects.get_or_create(
-        tenant=user.tenant,
+        tenant=get_current_tenant() or user.tenant,
         user=user,
         assessment_type=resolved_assessment_type,
         section_type=section_type,
@@ -753,14 +777,15 @@ def recompute_attempt_summary(attempt: Attempt) -> Attempt:
 
 
 def recompute_section_progress_for_user(user: User, assessment_type: str | None = None) -> int:
-    progress_qs = SectionProgress.objects.filter(user=user)
+    tenant = get_current_tenant() or user.tenant
+    progress_qs = SectionProgress.objects.filter(user=user, tenant=tenant)
     if assessment_type:
         progress_qs = progress_qs.filter(assessment_type=assessment_type)
 
     updates = 0
     for progress in progress_qs:
         relevant_sections = AttemptSection.objects.filter(
-            tenant=user.tenant,
+            tenant=progress.tenant,
             attempt__user=user,
             attempt__status=AttemptStatus.COMPLETED,
             attempt__assessment_type=progress.assessment_type,
@@ -949,11 +974,20 @@ def _get_redis_client() -> Redis:
 
 
 def _full_test_session_key(attempt_id: int) -> str:
-    return f"prepgia:attempt:{attempt_id}:full-test"
+    return f"{_attempt_tenant_slug(attempt_id)}:prepgia:attempt:{attempt_id}:full-test"
 
 
 def _section_test_session_key(attempt_id: int) -> str:
-    return f"prepgia:attempt:{attempt_id}:section-test"
+    return f"{_attempt_tenant_slug(attempt_id)}:prepgia:attempt:{attempt_id}:section-test"
+
+
+def _attempt_tenant_slug(attempt_id: int) -> str:
+    tenant_slug = (
+        Attempt.objects.filter(id=attempt_id)
+        .values_list("tenant__slug", flat=True)
+        .first()
+    )
+    return tenant_slug or get_current_tenant_slug()
 
 
 def _full_test_session_exists(attempt_id: int) -> bool:

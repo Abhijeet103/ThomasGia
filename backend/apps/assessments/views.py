@@ -12,6 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
 from backend.apps.assessments.config import ASSESSMENT_CONFIG, ASSESSMENT_PREPGIA
+from backend.apps.tenants.utils import get_current_tenant
 from .models import Attempt, AttemptMode, AttemptStatus, SectionType
 from .services import (
     SECTION_TIME_LIMITS,
@@ -117,7 +118,12 @@ class AttemptStartView(View):
 class FullTestSubmitView(LoginRequiredMixin, View):
     def post(self, request, attempt_id: int):
         expire_stale_attempts(request.user)
-        attempt = Attempt.objects.filter(id=attempt_id, user=request.user, mode=AttemptMode.FULL_TEST).first()
+        attempt = Attempt.objects.filter(
+            id=attempt_id,
+            user=request.user,
+            tenant=get_current_tenant() or request.user.tenant,
+            mode=AttemptMode.FULL_TEST,
+        ).first()
         if attempt is None:
             return JsonResponse({"detail": "Attempt not found."}, status=404)
 
@@ -135,7 +141,12 @@ class FullTestSubmitView(LoginRequiredMixin, View):
 class FullTestQuestionView(LoginRequiredMixin, View):
     def get(self, request, attempt_id: int):
         expire_stale_attempts(request.user)
-        attempt = Attempt.objects.filter(id=attempt_id, user=request.user, mode=AttemptMode.FULL_TEST).first()
+        attempt = Attempt.objects.filter(
+            id=attempt_id,
+            user=request.user,
+            tenant=get_current_tenant() or request.user.tenant,
+            mode=AttemptMode.FULL_TEST,
+        ).first()
         if attempt is None:
             return JsonResponse({"detail": "Attempt not found."}, status=404)
 
@@ -168,7 +179,12 @@ class FullTestQuestionView(LoginRequiredMixin, View):
 class FullTestSectionView(LoginRequiredMixin, View):
     def get(self, request, attempt_id: int):
         expire_stale_attempts(request.user)
-        attempt = Attempt.objects.filter(id=attempt_id, user=request.user, mode=AttemptMode.FULL_TEST).first()
+        attempt = Attempt.objects.filter(
+            id=attempt_id,
+            user=request.user,
+            tenant=get_current_tenant() or request.user.tenant,
+            mode=AttemptMode.FULL_TEST,
+        ).first()
         if attempt is None:
             return JsonResponse({"detail": "Attempt not found."}, status=404)
         if attempt.status == AttemptStatus.COMPLETED:
@@ -192,7 +208,12 @@ class FullTestSectionView(LoginRequiredMixin, View):
 class FullTestSectionSubmitView(LoginRequiredMixin, View):
     def post(self, request, attempt_id: int):
         expire_stale_attempts(request.user)
-        attempt = Attempt.objects.filter(id=attempt_id, user=request.user, mode=AttemptMode.FULL_TEST).prefetch_related("sections").first()
+        attempt = Attempt.objects.filter(
+            id=attempt_id,
+            user=request.user,
+            tenant=get_current_tenant() or request.user.tenant,
+            mode=AttemptMode.FULL_TEST,
+        ).prefetch_related("sections").first()
         if attempt is None:
             return JsonResponse({"detail": "Attempt not found."}, status=404)
         if attempt.status == AttemptStatus.COMPLETED:
@@ -224,7 +245,11 @@ class AttemptEndView(LoginRequiredMixin, View):
         return "pages:dashboard"
 
     def post(self, request, attempt_id: int):
-        attempt = Attempt.objects.filter(id=attempt_id, user=request.user).prefetch_related("sections").first()
+        attempt = Attempt.objects.filter(
+            id=attempt_id,
+            user=request.user,
+            tenant=get_current_tenant() or request.user.tenant,
+        ).prefetch_related("sections").first()
         if attempt is None:
             return redirect(self._redirect_target(request))
 
@@ -241,7 +266,11 @@ class AttemptEndView(LoginRequiredMixin, View):
 @method_decorator(csrf_exempt, name="dispatch")
 class AttemptProgressSaveView(LoginRequiredMixin, View):
     def post(self, request, attempt_id: int):
-        attempt = Attempt.objects.filter(id=attempt_id, user=request.user).prefetch_related("sections").first()
+        attempt = Attempt.objects.filter(
+            id=attempt_id,
+            user=request.user,
+            tenant=get_current_tenant() or request.user.tenant,
+        ).prefetch_related("sections").first()
         if attempt is None:
             return JsonResponse({"detail": "Attempt not found."}, status=404)
         if attempt.status == AttemptStatus.COMPLETED:
@@ -260,7 +289,12 @@ class AttemptProgressSaveView(LoginRequiredMixin, View):
 class SectionTestSubmitView(LoginRequiredMixin, View):
     def post(self, request, attempt_id: int):
         expire_stale_attempts(request.user)
-        attempt = Attempt.objects.filter(id=attempt_id, user=request.user, mode=AttemptMode.SECTION).prefetch_related("sections").first()
+        attempt = Attempt.objects.filter(
+            id=attempt_id,
+            user=request.user,
+            tenant=get_current_tenant() or request.user.tenant,
+            mode=AttemptMode.SECTION,
+        ).prefetch_related("sections").first()
         if attempt is None:
             return JsonResponse({"detail": "Attempt not found."}, status=404)
 

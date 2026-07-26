@@ -1,0 +1,16 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <div id="content-main">
+    <p><strong>Tenant:</strong> {{ tenant.name }} ({{ tenant.primary_domain }})</p>
+    <form method="post">
+      {% csrf_token %}
+      <fieldset class="module aligned">
+        {{ form.as_p }}
+      </fieldset>
+      <div class="submit-row">
+        <input type="submit" value="{{ submit_label }}" class="default">
+      </div>
+    </form>
+  </div>
+{% endblock %}

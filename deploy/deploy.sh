@@ -3,6 +3,11 @@ set -e  # stop immediately if any command fails
 
 cd /home/ec2-user/ThomasGia
 
+DOMAIN="${CERTBOT_DOMAIN:-mindmetric.store}"
+CERT_NAME="${CERTBOT_CERT_NAME:-$DOMAIN}"
+CERTBOT_AUTO_SETUP="${CERTBOT_AUTO_SETUP:-false}"
+CERTBOT_AUTO_RENEW="${CERTBOT_AUTO_RENEW:-true}"
+
 echo "Fetching latest code from origin..."
 git fetch origin
 
@@ -37,6 +42,30 @@ if [ -f /etc/nginx/conf.d/mindmetric.conf ]; then
   sudo python3 deploy/sync_nginx_conf.py /etc/nginx/conf.d/mindmetric.conf
 else
   sudo cp deploy/mindmetric.conf /etc/nginx/conf.d/mindmetric.conf
+fi
+
+echo "Checking TLS coverage for tenant subdomains..."
+if command -v certbot >/dev/null 2>&1 && [[ "$CERTBOT_AUTO_RENEW" == "true" ]]; then
+  if ! sudo certbot renew --quiet; then
+    echo "WARNING: Certbot renewal did not complete. Validating the installed certificate."
+  fi
+fi
+
+if ! sudo bash deploy/check_wildcard_certificate.sh "$DOMAIN" "$CERT_NAME"; then
+  if [[ "$CERTBOT_AUTO_SETUP" == "true" ]]; then
+    if [[ -z "${CERTBOT_EMAIL:-}" ]]; then
+      echo "CERTBOT_EMAIL is required when CERTBOT_AUTO_SETUP=true."
+      exit 1
+    fi
+    deploy/setup_certbot_nginx.sh "$DOMAIN" "$CERTBOT_EMAIL"
+  else
+    echo "Deployment stopped because HTTPS does not cover *.${DOMAIN}."
+    echo "Run this once, complete the DNS TXT challenge, and deploy again:"
+    echo "  ./deploy/setup_certbot_nginx.sh ${DOMAIN} your-email@example.com"
+    echo "For unattended setup/renewal, configure executable"
+    echo "CERTBOT_DNS_AUTH_HOOK and CERTBOT_DNS_CLEANUP_HOOK scripts."
+    exit 1
+  fi
 fi
 
 echo "Fixing static file permissions..."

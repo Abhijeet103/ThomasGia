@@ -27,6 +27,11 @@ CSRF_TRUSTED_ORIGINS = [
     for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
     if origin.strip()
 ]
+if IS_PRODUCTION:
+    if ".mindmetric.store" not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(".mindmetric.store")
+    if "https://*.mindmetric.store" not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append("https://*.mindmetric.store")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -53,11 +58,13 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "backend.apps.tenants.middleware.TenantMiddleware",
+    "backend.apps.tenants.middleware.TenantOAuthHandoffMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "backend.apps.tenants.middleware.TenantAccessMiddleware",
     "backend.apps.billing.middleware.SubscriptionAccessMiddleware",
+    "backend.apps.tenants.middleware.TenantEnrollmentMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",
@@ -165,6 +172,7 @@ ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_UNIQUE_EMAIL = True
 ACCOUNT_SIGNUP_FORM_CLASS = "backend.apps.accounts.forms.CustomSignupForm"
+ACCOUNT_ADAPTER = "backend.apps.accounts.adapters.TenantAccountAdapter"
 SOCIALACCOUNT_ADAPTER = "backend.apps.accounts.adapters.TenantSocialAccountAdapter"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
@@ -194,6 +202,12 @@ SITE_URL = (
 GOOGLE_SITE_VERIFICATION = os.getenv("GOOGLE_SITE_VERIFICATION", "")
 DATABASE_ADMIN_URL = os.getenv("DATABASE_ADMIN_URL", "").strip()
 DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG", "mindmetric")
+TENANT_BASE_DOMAIN = os.getenv("TENANT_BASE_DOMAIN", "mindmetric.store").strip().lower()
+if IS_PRODUCTION:
+    SESSION_COOKIE_DOMAIN = f".{TENANT_BASE_DOMAIN}"
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_DOMAIN = f".{TENANT_BASE_DOMAIN}"
+    CSRF_COOKIE_SECURE = True
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:8005/0")
 DJANGO_CACHE_KEY_PREFIX = os.getenv("DJANGO_CACHE_KEY_PREFIX", "mindmetric")
 DJANGO_CACHE_TIMEOUT = int(os.getenv("DJANGO_CACHE_TIMEOUT", "300"))

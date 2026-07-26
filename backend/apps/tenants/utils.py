@@ -37,6 +37,11 @@ def get_current_tenant_slug() -> str:
     return _current_tenant_slug.get() or default_tenant_slug()
 
 
+def get_current_tenant() -> Tenant | None:
+    slug = get_current_tenant_slug()
+    return Tenant.objects.filter(slug=slug, is_active=True).first()
+
+
 def default_tenant_domain() -> str:
     parsed = urlparse(getattr(settings, "SITE_URL", "https://mindmetric.store"))
     return normalize_host(parsed.hostname or "mindmetric.store")

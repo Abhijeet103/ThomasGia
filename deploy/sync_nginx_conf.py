@@ -6,7 +6,9 @@ import sys
 from pathlib import Path
 
 
-TARGET_SERVER_NAMES = ("mindmetric.store", "www.mindmetric.store")
+TARGET_SERVER_NAMES = ("mindmetric.store", "www.mindmetric.store", "*.mindmetric.store")
+
+WILDCARD_SERVER_NAME = "*.mindmetric.store"
 
 GZIP_BLOCK = """    gzip on;
     gzip_vary on;
@@ -72,6 +74,15 @@ def ensure_gzip(block: str) -> str:
     return re.sub(r"(server_name\s+[^\n]+;\n)", r"\1\n" + GZIP_BLOCK + "\n", block, count=1)
 
 
+def ensure_wildcard_server_name(block: str) -> str:
+    server_name_pattern = re.compile(r"server_name\s+([^\n]+);")
+    match = server_name_pattern.search(block)
+    if not match or WILDCARD_SERVER_NAME in match.group(1).split():
+        return block
+    names = f"{match.group(1).strip()} {WILDCARD_SERVER_NAME}"
+    return server_name_pattern.sub(f"server_name {names};", block, count=1)
+
+
 def ensure_canonical_host(block: str) -> str:
     if "if ($host = www.mindmetric.store)" in block:
         return block
@@ -107,6 +118,7 @@ def patch_config(text: str) -> str:
     for start, end, block in blocks:
         updated.append(text[cursor:start])
         if should_patch(block):
+            block = ensure_wildcard_server_name(block)
             block = ensure_canonical_host(block)
             block = ensure_gzip(block)
             block = ensure_static_block(block)
