@@ -24,8 +24,9 @@ from .models import (
     TenantEnrollmentCode,
     TenantMembership,
     TenantStudentInvite,
+    TenantUser,
 )
-from .services import create_membership
+from .services import create_membership, get_or_create_tenant_user
 
 User = get_user_model()
 
@@ -52,6 +53,7 @@ class TenantMembershipInline(admin.TabularInline):
     extra = 0
     fields = (
         "user",
+        "tenant_user",
         "status",
         "plan_code",
         "access_started_at",
@@ -227,6 +229,7 @@ class TenantAdmin(PlatformSuperuserAdminMixin, admin.ModelAdmin):
                     is_tenant_admin=True,
                     is_superuser=False,
                 )
+                get_or_create_tenant_user(tenant=tenant, user=user)
                 self.message_user(request, f"Created tenant admin {user.email}.", level=messages.SUCCESS)
                 return redirect(reverse("admin:accounts_user_change", args=[user.pk]))
         else:
@@ -331,7 +334,7 @@ class TenantAdmin(PlatformSuperuserAdminMixin, admin.ModelAdmin):
 
 @admin.register(TenantMembership)
 class TenantMembershipAdmin(PlatformSuperuserAdminMixin, admin.ModelAdmin):
-    list_display = ("user", "tenant", "status", "plan_code", "access_started_at", "access_expires_at", "enrollment_source")
+    list_display = ("tenant_user", "user", "tenant", "status", "plan_code", "access_started_at", "access_expires_at", "enrollment_source")
     list_filter = ("tenant", "status", "plan_code", "enrollment_source")
     search_fields = ("user__email", "tenant__name", "tenant__subdomain_prefix")
     readonly_fields = ("created_at", "updated_at")
@@ -361,6 +364,28 @@ class TenantMembershipAdmin(PlatformSuperuserAdminMixin, admin.ModelAdmin):
     def revoke_selected(self, request, queryset):
         count = queryset.update(status=MembershipStatus.REVOKED, access_expires_at=timezone.now())
         self.message_user(request, f"Revoked {count} membership(s).", level=messages.SUCCESS)
+
+
+@admin.register(TenantUser)
+class TenantUserAdmin(PlatformSuperuserAdminMixin, admin.ModelAdmin):
+    list_display = ("email", "tenant", "identity", "status", "joined_at", "last_seen_at")
+    list_filter = ("tenant", "status")
+    search_fields = ("email", "identity__email", "tenant__name", "tenant__subdomain_prefix")
+    readonly_fields = ("tenant", "identity", "email", "joined_at", "last_seen_at", "updated_at")
+    actions = ("activate_selected", "suspend_selected")
+
+    def has_add_permission(self, request):
+        return False
+
+    @admin.action(description="Activate selected tenant users")
+    def activate_selected(self, request, queryset):
+        count = queryset.update(status="active")
+        self.message_user(request, f"Activated {count} tenant user(s).", level=messages.SUCCESS)
+
+    @admin.action(description="Suspend selected tenant users")
+    def suspend_selected(self, request, queryset):
+        count = queryset.update(status="suspended")
+        self.message_user(request, f"Suspended {count} tenant user(s).", level=messages.SUCCESS)
 
 
 @admin.register(TenantEnrollmentCode)

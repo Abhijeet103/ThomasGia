@@ -365,14 +365,18 @@ class SubscriptionPageView(LoginRequiredMixin, TemplateView):
 
     def dispatch(self, request, *args, **kwargs):
         sync_user_subscription_access(request.user)
-        if not request.user.has_active_subscription:
+        if not request.effective_access_active:
             return redirect("pages:pricing")
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         active_subscription = self.request.user.subscriptions.filter(status="active").order_by("-updated_at").first()
-        visible_plans = _visible_frontend_plans(self.request.user, active_subscription)
+        is_tenant_managed = self.request.effective_access_tenant_managed
+        visible_plans = (
+            [] if is_tenant_managed
+            else _visible_frontend_plans(self.request.user, active_subscription)
+        )
         extension_cards = []
         for plan in visible_plans:
             extension_cards.append(
@@ -400,10 +404,23 @@ class SubscriptionPageView(LoginRequiredMixin, TemplateView):
                 "contact_form": SaleInquiryForm(initial={**_contact_form_initial(self.request, "subscription"), "next": self.request.path}),
                 "contact_sales_open_url": _contact_sales_open_url(self.request),
                 "contact_sales_close_url": _contact_sales_close_url(self.request),
-                "subscription_plan_title": _plan_title(active_subscription),
-                "subscription_is_active": bool(active_subscription and self.request.user.subscription_expires_at),
-                "subscription_access_summary": "Full access, all tracks" if active_subscription else "Free access with limited section practice",
-                "subscription_remaining_copy": _format_remaining_time(self.request.user.subscription_expires_at),
+                "subscription_plan_title": (
+                    self.request.effective_role_label
+                    if is_tenant_managed
+                    else _plan_title(active_subscription)
+                ),
+                "subscription_is_active": self.request.effective_access_active,
+                "subscription_access_summary": (
+                    f"Access provided by {self.request.effective_access_source_label}"
+                    if is_tenant_managed
+                    else "Full access, all tracks"
+                ),
+                "subscription_expires_at": self.request.effective_access_expires_at,
+                "subscription_remaining_copy": _format_remaining_time(
+                    self.request.effective_access_expires_at
+                ),
+                "subscription_is_tenant_managed": is_tenant_managed,
+                "subscription_source_label": self.request.effective_access_source_label,
             }
         )
         return context

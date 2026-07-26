@@ -33,13 +33,18 @@ class BillingStatusView(View):
 
         sync_user_subscription_access(request.user)
         active = request.user.subscriptions.filter(status="active").first()
+        expires_at = request.effective_access_expires_at
         return JsonResponse(
             {
-                "role": request.user.role,
-                "subscription_expires_at": request.user.subscription_expires_at.isoformat() if request.user.subscription_expires_at else None,
+                "role": request.effective_role,
+                "role_label": request.effective_role_label,
+                "subscription_expires_at": expires_at.isoformat() if expires_at else None,
                 "subscription": {
-                    "active": bool(active),
-                    "plan_code": active.plan_code if active else None,
+                    "active": request.effective_access_active,
+                    "plan_code": request.effective_plan_code or (active.plan_code if active else None),
+                    "source": request.effective_access_source,
+                    "source_label": request.effective_access_source_label,
+                    "tenant_managed": request.effective_access_tenant_managed,
                 },
             }
         )

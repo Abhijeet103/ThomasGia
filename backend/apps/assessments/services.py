@@ -20,7 +20,12 @@ from backend.apps.assessments.config import (
     get_time_limit_seconds,
 )
 from prepgia.generators import SECTION_TYPES, generate_question
-from backend.apps.tenants.services import get_tenant_access, is_institution_tenant, tenant_allows_assessment
+from backend.apps.tenants.services import (
+    get_or_create_tenant_user,
+    get_tenant_access,
+    is_institution_tenant,
+    tenant_allows_assessment,
+)
 from backend.apps.tenants.utils import get_current_tenant, get_current_tenant_slug
 
 from .models import Attempt, AttemptMode, AttemptSection, AttemptStatus, SectionProgress, SectionType
@@ -99,9 +104,11 @@ def create_attempt(
         raise PermissionError(decision.message)
 
     tenant = get_current_tenant() or user.tenant
+    tenant_user = get_or_create_tenant_user(tenant=tenant, user=user)
     attempt = Attempt.objects.create(
         user=user,
         tenant=tenant,
+        tenant_user=tenant_user,
         assessment_type=assessment_type,
         mode=mode,
         status=AttemptStatus.IN_PROGRESS,
@@ -169,9 +176,11 @@ def get_or_create_full_test_attempt(user: User, assessment_type: str = ASSESSMEN
     assessment_config = get_assessment_config(assessment_type)
     full_test_practice_count = assessment_config["full_test_practice_count"]
     tenant = get_current_tenant() or user.tenant
+    tenant_user = get_or_create_tenant_user(tenant=tenant, user=user)
     attempt = Attempt.objects.create(
         user=user,
         tenant=tenant,
+        tenant_user=tenant_user,
         assessment_type=assessment_type,
         mode=AttemptMode.FULL_TEST,
         status=AttemptStatus.IN_PROGRESS,
@@ -634,12 +643,17 @@ def record_practice_progress(
     assessment_type: str | None = None,
 ) -> SectionProgress:
     resolved_assessment_type = assessment_type or get_module_assessment_type(section_type)
+    tenant = get_current_tenant() or user.tenant
     progress, _ = SectionProgress.objects.get_or_create(
-        tenant=get_current_tenant() or user.tenant,
+        tenant=tenant,
         user=user,
         assessment_type=resolved_assessment_type,
         section_type=section_type,
+        defaults={"tenant_user": get_or_create_tenant_user(tenant=tenant, user=user)},
     )
+    if progress.tenant_user_id is None:
+        progress.tenant_user = get_or_create_tenant_user(tenant=tenant, user=user)
+        progress.save(update_fields=["tenant_user", "updated_at"])
     progress.practice_questions_solved += max(0, solved_increment)
     progress.save(update_fields=["practice_questions_solved", "updated_at"])
     logger.info(
@@ -653,12 +667,17 @@ def record_practice_progress(
 
 def record_test_progress(user: User, section_type: str, score: float, assessment_type: str | None = None) -> SectionProgress:
     resolved_assessment_type = assessment_type or get_module_assessment_type(section_type)
+    tenant = get_current_tenant() or user.tenant
     progress, _ = SectionProgress.objects.get_or_create(
-        tenant=get_current_tenant() or user.tenant,
+        tenant=tenant,
         user=user,
         assessment_type=resolved_assessment_type,
         section_type=section_type,
+        defaults={"tenant_user": get_or_create_tenant_user(tenant=tenant, user=user)},
     )
+    if progress.tenant_user_id is None:
+        progress.tenant_user = get_or_create_tenant_user(tenant=tenant, user=user)
+        progress.save(update_fields=["tenant_user", "updated_at"])
     progress.tests_taken += 1
     progress.last_test_score = score
     progress.save(update_fields=["tests_taken", "last_test_score", "updated_at"])

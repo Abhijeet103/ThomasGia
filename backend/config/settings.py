@@ -62,6 +62,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "backend.apps.tenants.middleware.TenantUserMiddleware",
     "backend.apps.tenants.middleware.TenantAccessMiddleware",
     "backend.apps.billing.middleware.SubscriptionAccessMiddleware",
     "backend.apps.tenants.middleware.TenantEnrollmentMiddleware",

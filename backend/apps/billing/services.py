@@ -16,6 +16,7 @@ from django.utils import timezone
 
 from backend.apps.accounts.models import User, UserRole
 from backend.apps.accounts.emails import send_subscription_activated_email, send_subscription_canceled_email
+from backend.apps.tenants.utils import get_current_tenant
 
 from .models import Subscription, SubscriptionStatus
 
@@ -265,12 +266,16 @@ def _activate_subscription(
         current_period_end=now,
     )
 
+    tenant = get_current_tenant() or user.tenant
+    from backend.apps.tenants.services import get_or_create_tenant_user
+
     subscription, _ = Subscription.objects.update_or_create(
         provider=provider,
         provider_subscription_id=provider_subscription_id,
         defaults={
             "user": user,
-            "tenant": user.tenant,
+            "tenant": tenant,
+            "tenant_user": get_or_create_tenant_user(tenant=tenant, user=user),
             "plan_code": plan.code,
             "status": SubscriptionStatus.ACTIVE,
             "provider_customer_id": provider_customer_id,
@@ -431,12 +436,16 @@ def create_paypal_order(user: User, plan_code: str, base_url: str | None = None)
 
     order_id = order_payload.get("id", "")
     if order_id:
+        tenant = get_current_tenant() or user.tenant
+        from backend.apps.tenants.services import get_or_create_tenant_user
+
         Subscription.objects.update_or_create(
             provider="paypal",
             provider_subscription_id=order_id,
             defaults={
                 "user": user,
-                "tenant": user.tenant,
+                "tenant": tenant,
+                "tenant_user": get_or_create_tenant_user(tenant=tenant, user=user),
                 "plan_code": plan.code,
                 "status": SubscriptionStatus.PENDING,
                 "provider_customer_id": "",

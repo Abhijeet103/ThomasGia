@@ -14,6 +14,13 @@ class SubscriptionStatus(models.TextChoices):
 class Subscription(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="subscriptions")
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="subscriptions", blank=True, null=True)
+    tenant_user = models.ForeignKey(
+        "tenants.TenantUser",
+        on_delete=models.PROTECT,
+        related_name="subscriptions",
+        blank=True,
+        null=True,
+    )
     provider = models.CharField(max_length=32, default="stripe")
     plan_code = models.CharField(max_length=64)
     status = models.CharField(max_length=16, choices=SubscriptionStatus.choices, default=SubscriptionStatus.PENDING)

@@ -86,6 +86,13 @@ class AssessmentTrackWaitlistEntry(models.Model):
 class Attempt(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="attempts")
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="attempts", blank=True, null=True)
+    tenant_user = models.ForeignKey(
+        "tenants.TenantUser",
+        on_delete=models.PROTECT,
+        related_name="attempts",
+        blank=True,
+        null=True,
+    )
     assessment_type = models.CharField(max_length=24, default="prepgia")
     mode = models.CharField(max_length=24, choices=AttemptMode.choices)
     status = models.CharField(max_length=24, choices=AttemptStatus.choices, default=AttemptStatus.CREATED)
@@ -132,6 +139,13 @@ class AttemptAnswer(models.Model):
 class SectionProgress(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="section_progress")
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.PROTECT, related_name="section_progress_rows", blank=True, null=True)
+    tenant_user = models.ForeignKey(
+        "tenants.TenantUser",
+        on_delete=models.PROTECT,
+        related_name="section_progress_rows",
+        blank=True,
+        null=True,
+    )
     assessment_type = models.CharField(max_length=24, default="prepgia")
     section_type = models.CharField(max_length=32, choices=SectionType.choices)
     practice_questions_solved = models.PositiveIntegerField(default=0)

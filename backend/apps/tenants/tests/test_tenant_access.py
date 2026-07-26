@@ -8,6 +8,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from backend.apps.assessments.models import AssessmentTrack, PracticeTrackVisibility
+from backend.apps.assessments.services import record_practice_progress
 from backend.apps.tenants.models import (
     EnrollmentMode,
     EnrollmentSource,
@@ -16,7 +17,9 @@ from backend.apps.tenants.models import (
     TenantMembership,
     TenantStudentInvite,
     TenantType,
+    TenantUser,
 )
+from backend.apps.tenants.utils import reset_current_tenant_slug, set_current_tenant_slug
 
 
 User = get_user_model()
@@ -62,10 +65,18 @@ class TenantAccessFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         membership = TenantMembership.objects.get(tenant=tenant, user=self.user)
+        tenant_user = TenantUser.objects.get(tenant=tenant, identity=self.user)
         original_expiry = membership.access_expires_at
+        self.assertEqual(membership.tenant_user, tenant_user)
+        self.assertEqual(tenant_user.email, self.user.email)
         self.assertEqual(membership.enrollment_source, EnrollmentSource.OPEN_LOGIN)
         self.assertEqual(self.user.role, "free")
         self.assertIsNone(self.user.subscription_expires_at)
+        self.assertEqual(response.wsgi_request.effective_role, "paid")
+        self.assertEqual(response.wsgi_request.effective_role_label, "Weekly plan")
+        self.assertEqual(response.wsgi_request.effective_plan_code, "weekly")
+        self.assertTrue(response.wsgi_request.effective_access_tenant_managed)
+        self.assertContains(response, "Weekly plan")
 
         self.client.get("/practice/", HTTP_HOST=tenant.primary_domain)
         membership.refresh_from_db()
@@ -89,6 +100,27 @@ class TenantAccessFlowTests(TestCase):
             membership.access_expires_at,
             joined_at + timedelta(days=7, minutes=1),
         )
+
+        session_response = self.client.get(
+            "/api/auth/session/",
+            HTTP_HOST=tenant.primary_domain,
+        )
+        self.assertEqual(session_response.status_code, 200)
+        session_user = session_response.json()["user"]
+        self.assertEqual(session_user["role"], "paid")
+        self.assertEqual(session_user["role_label"], "Weekly plan")
+        self.assertEqual(session_user["plan_code"], "weekly")
+        self.assertTrue(session_user["tenant_managed"])
+
+        subscription_response = self.client.get(
+            reverse("pages:subscription"),
+            HTTP_HOST=tenant.primary_domain,
+        )
+        self.assertEqual(subscription_response.status_code, 200)
+        self.assertContains(subscription_response, "Weekly plan")
+        self.assertContains(subscription_response, f"Access provided by {tenant.name}")
+        self.assertNotContains(subscription_response, "Cancel subscription")
+        self.assertNotContains(subscription_response, "Need more time?")
 
     def test_no_default_plan_does_not_grant_automatic_membership(self):
         tenant = self.create_institution(default_plan_code=None)
@@ -160,6 +192,36 @@ class TenantAccessFlowTests(TestCase):
         response = self.client.get("/practice/", HTTP_HOST=self.platform.primary_domain)
         self.assertEqual(response.status_code, 200)
         self.assertFalse(TenantMembership.objects.exists())
+        self.assertTrue(TenantUser.objects.filter(tenant=self.platform, identity=self.user).exists())
+
+    def test_same_login_has_distinct_platform_and_institution_user_entries(self):
+        tenant = self.create_institution(prefix="demo-profile")
+        self.client.force_login(self.user)
+
+        platform_response = self.client.get("/practice/", HTTP_HOST=self.platform.primary_domain)
+        tenant_response = self.client.get("/practice/", HTTP_HOST=tenant.primary_domain)
+
+        self.assertEqual(platform_response.status_code, 200)
+        self.assertEqual(tenant_response.status_code, 200)
+        tenant_users = TenantUser.objects.filter(identity=self.user).order_by("tenant_id")
+        self.assertEqual(tenant_users.count(), 2)
+        self.assertEqual(set(tenant_users.values_list("tenant_id", flat=True)), {self.platform.id, tenant.id})
+        self.assertEqual(set(tenant_users.values_list("email", flat=True)), {self.user.email})
+
+    def test_tenant_progress_is_attached_to_the_active_tenant_user(self):
+        tenant = self.create_institution(prefix="demo-progress")
+        self.client.force_login(self.user)
+        self.client.get("/practice/", HTTP_HOST=tenant.primary_domain)
+        tenant_user = TenantUser.objects.get(tenant=tenant, identity=self.user)
+
+        token = set_current_tenant_slug(tenant.slug)
+        try:
+            progress = record_practice_progress(self.user, "reasoning")
+        finally:
+            reset_current_tenant_slug(token)
+
+        self.assertEqual(progress.tenant, tenant)
+        self.assertEqual(progress.tenant_user, tenant_user)
 
     def test_platform_tenant_allow_list_hides_unselected_assessments(self):
         self.platform.allowed_assessments = ["prepgia", "ccat"]
@@ -227,6 +289,7 @@ class TenantAccessFlowTests(TestCase):
             self.client.session["tenant_oauth_return_url"],
             f"http://{tenant.primary_domain}/dashboard/",
         )
+        self.assertEqual(self.client.session["tenant_oauth_tenant_id"], tenant.id)
 
     def test_institution_domain_is_derived_from_prefix(self):
         tenant = self.create_institution(prefix="academy")

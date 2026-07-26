@@ -16,6 +16,8 @@ from .models import (
     TenantMembership,
     TenantStudentInvite,
     TenantType,
+    TenantUser,
+    TenantUserStatus,
 )
 
 
@@ -24,10 +26,33 @@ class TenantAccess:
     allowed: bool
     membership: TenantMembership | None
     requires_code: bool = False
+    tenant_user: TenantUser | None = None
 
 
 def is_institution_tenant(tenant: Tenant | None) -> bool:
     return bool(tenant and tenant.is_active and tenant.tenant_type == TenantType.INSTITUTION)
+
+
+def get_or_create_tenant_user(*, tenant: Tenant | None, user) -> TenantUser | None:
+    if tenant is None or not tenant.is_active or not getattr(user, "is_authenticated", False):
+        return None
+
+    normalized_email = user.email.strip().lower()
+    tenant_user, created = TenantUser.objects.get_or_create(
+        tenant=tenant,
+        identity=user,
+        defaults={
+            "email": normalized_email,
+            "status": TenantUserStatus.ACTIVE,
+        },
+    )
+    changed_fields = []
+    if tenant_user.email != normalized_email:
+        tenant_user.email = normalized_email
+        changed_fields.append("email")
+    if changed_fields and not created:
+        tenant_user.save(update_fields=(*changed_fields, "updated_at"))
+    return tenant_user
 
 
 def create_membership(*, tenant: Tenant, user, source: str) -> TenantMembership | None:
@@ -35,10 +60,12 @@ def create_membership(*, tenant: Tenant, user, source: str) -> TenantMembership 
         return None
 
     now = timezone.now()
+    tenant_user = get_or_create_tenant_user(tenant=tenant, user=user)
     membership, created = TenantMembership.objects.get_or_create(
         tenant=tenant,
         user=user,
         defaults={
+            "tenant_user": tenant_user,
             "status": MembershipStatus.ACTIVE,
             "plan_code": tenant.default_plan_code,
             "access_started_at": now,
@@ -46,6 +73,9 @@ def create_membership(*, tenant: Tenant, user, source: str) -> TenantMembership 
             "enrollment_source": source,
         },
     )
+    if not created and membership.tenant_user_id != getattr(tenant_user, "id", None):
+        membership.tenant_user = tenant_user
+        membership.save(update_fields=("tenant_user", "updated_at"))
     if not created and membership.status == MembershipStatus.EXPIRED:
         membership.status = MembershipStatus.ACTIVE
         membership.plan_code = tenant.default_plan_code
@@ -68,20 +98,36 @@ def create_membership(*, tenant: Tenant, user, source: str) -> TenantMembership 
 def get_tenant_access(*, tenant: Tenant | None, user, auto_enroll: bool = True) -> TenantAccess:
     if not is_institution_tenant(tenant) or not getattr(user, "is_authenticated", False):
         return TenantAccess(True, None)
+    tenant_user = get_or_create_tenant_user(tenant=tenant, user=user)
+    if tenant_user and tenant_user.status != TenantUserStatus.ACTIVE:
+        return TenantAccess(False, None, tenant_user=tenant_user)
     if user.is_superuser or (user.is_tenant_admin and user.tenant_id == tenant.id):
-        return TenantAccess(True, None)
+        return TenantAccess(True, None, tenant_user=tenant_user)
 
     membership = TenantMembership.objects.filter(tenant=tenant, user=user).first()
     if membership:
+        if membership.tenant_user_id != getattr(tenant_user, "id", None):
+            membership.tenant_user = tenant_user
+            membership.save(update_fields=("tenant_user", "updated_at"))
         if membership.is_active:
-            return TenantAccess(True, membership)
+            return TenantAccess(True, membership, tenant_user=tenant_user)
         if membership.status == MembershipStatus.ACTIVE:
             membership.status = MembershipStatus.EXPIRED
             membership.save(update_fields=("status", "updated_at"))
-        return TenantAccess(False, membership, requires_code=tenant.enrollment_mode == EnrollmentMode.CODE_REQUIRED)
+        return TenantAccess(
+            False,
+            membership,
+            requires_code=tenant.enrollment_mode == EnrollmentMode.CODE_REQUIRED,
+            tenant_user=tenant_user,
+        )
 
     if not auto_enroll:
-        return TenantAccess(False, None, requires_code=tenant.enrollment_mode == EnrollmentMode.CODE_REQUIRED)
+        return TenantAccess(
+            False,
+            None,
+            requires_code=tenant.enrollment_mode == EnrollmentMode.CODE_REQUIRED,
+            tenant_user=tenant_user,
+        )
 
     invite = TenantStudentInvite.objects.filter(
         tenant=tenant,
@@ -93,17 +139,17 @@ def get_tenant_access(*, tenant: Tenant | None, user, auto_enroll: bool = True) 
         with transaction.atomic():
             membership = create_membership(tenant=tenant, user=user, source=EnrollmentSource.INVITE)
             if membership is None:
-                return TenantAccess(False, None)
+                return TenantAccess(False, None, tenant_user=tenant_user)
             invite.accepted_by = user
             invite.accepted_at = timezone.now()
             invite.save(update_fields=("accepted_by", "accepted_at", "updated_at"))
-        return TenantAccess(True, membership)
+        return TenantAccess(True, membership, tenant_user=tenant_user)
 
     if tenant.enrollment_mode == EnrollmentMode.OPEN:
         membership = create_membership(tenant=tenant, user=user, source=EnrollmentSource.OPEN_LOGIN)
-        return TenantAccess(membership is not None, membership)
+        return TenantAccess(membership is not None, membership, tenant_user=tenant_user)
 
-    return TenantAccess(False, None, requires_code=True)
+    return TenantAccess(False, None, requires_code=True, tenant_user=tenant_user)
 
 
 def redeem_enrollment_code(*, tenant: Tenant, user, raw_code: str) -> TenantMembership | None:

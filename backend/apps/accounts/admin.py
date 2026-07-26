@@ -12,6 +12,7 @@ from backend.apps.assessments.models import Attempt, AttemptStatus, SectionProgr
 from backend.apps.assessments.services import recompute_section_progress_for_user
 from backend.apps.billing.models import Subscription, SubscriptionStatus
 from backend.apps.billing.services import calculate_expiry, sync_user_subscription_access
+from backend.apps.tenants.services import get_or_create_tenant_user
 from backend.apps.tenants.utils import get_default_tenant
 
 from .models import User, UserRole
@@ -20,12 +21,14 @@ from .models import User, UserRole
 def _activate_manual_subscription_for_user(user: User, plan_code: str) -> None:
     now = timezone.now()
     expiry = calculate_expiry(now, plan_code)
+    tenant_user = get_or_create_tenant_user(tenant=user.tenant, user=user)
     Subscription.objects.update_or_create(
         user=user,
         provider="admin",
         status=SubscriptionStatus.ACTIVE,
         defaults={
             "tenant": user.tenant,
+            "tenant_user": tenant_user,
             "plan_code": plan_code,
             "provider_customer_id": "",
             "provider_subscription_id": f"admin-{user.id}-{plan_code}",
@@ -136,6 +139,7 @@ class UserAdmin(DjangoUserAdmin):
                 provider="admin",
                 defaults={
                     "tenant": user.tenant,
+                    "tenant_user": get_or_create_tenant_user(tenant=user.tenant, user=user),
                     "plan_code": "monthly",
                     "status": SubscriptionStatus.ACTIVE,
                     "provider_subscription_id": f"admin-{user.id}-monthly",

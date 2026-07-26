@@ -5,7 +5,13 @@
     <div class="pricing-hero subscription-hero">
         <span class="kicker">Subscription</span>
         <h1 class="section-title">Manage your access</h1>
-        <p class="section-copy">Review your current plan, check when it expires, and add more time whenever you need it.</p>
+        <p class="section-copy">
+            {% if subscription_is_tenant_managed %}
+                Review the access provided by {{ subscription_source_label }} and when it expires.
+            {% else %}
+                Review your current plan, check when it expires, and add more time whenever you need it.
+            {% endif %}
+        </p>
     </div>
 
     <article class="card subscription-status-card">
@@ -23,7 +29,7 @@
                     </span>
                 </div>
             </div>
-            {% if subscription_expires_at %}
+            {% if subscription_expires_at and not subscription_is_tenant_managed %}
                 <form method="post" action="{% url 'billing-cancel' %}" class="subscription-cancel-form" data-show-loader>
                     {% csrf_token %}
                     <button type="submit" class="subscription-cancel-link">Cancel subscription</button>
@@ -56,6 +62,7 @@
         {% endif %}
     </article>
 
+    {% if not subscription_is_tenant_managed %}
     <section class="subscription-extension-section">
         <div class="subscription-extension-copy">
             <h2>Need more time?</h2>
@@ -100,6 +107,7 @@
         </div>
         <a href="{{ contact_sales_open_url }}#contact-sales-modal" class="button-secondary pricing-sales-button" data-modal-open="contact-sales-modal">Contact sales</a>
     </article>
+    {% endif %}
 </section>
 
 {% include "includes/contact_sales_modal.html" with modal_id="contact-sales-modal" modal_title="Contact sales" modal_copy="Tell us about your cohort, institute, or team and we will follow up with the right access setup." %}

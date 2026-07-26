@@ -32,6 +32,11 @@ class MembershipStatus(models.TextChoices):
     REVOKED = "revoked", "Revoked"
 
 
+class TenantUserStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    SUSPENDED = "suspended", "Suspended"
+
+
 class EnrollmentSource(models.TextChoices):
     OPEN_LOGIN = "open_login", "Open login"
     CODE = "code", "Enrollment code"
@@ -87,9 +92,52 @@ class Tenant(models.Model):
         super().save(*args, **kwargs)
 
 
+class TenantUser(models.Model):
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="tenant_users")
+    identity = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="tenant_users",
+    )
+    email = models.EmailField()
+    status = models.CharField(
+        max_length=16,
+        choices=TenantUserStatus.choices,
+        default=TenantUserStatus.ACTIVE,
+    )
+    joined_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("tenant", "identity"), name="unique_tenant_user_identity"),
+        ]
+        indexes = [
+            models.Index(fields=("tenant", "status", "joined_at")),
+            models.Index(fields=("tenant", "email")),
+            models.Index(fields=("identity", "status")),
+        ]
+        ordering = ("tenant__name", "email")
+
+    def __str__(self) -> str:
+        return f"{self.email} at {self.tenant.name}"
+
+    def save(self, *args, **kwargs):
+        self.email = self.email.strip().lower()
+        super().save(*args, **kwargs)
+
+
 class TenantMembership(models.Model):
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="memberships")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tenant_memberships")
+    tenant_user = models.OneToOneField(
+        TenantUser,
+        on_delete=models.CASCADE,
+        related_name="membership",
+        blank=True,
+        null=True,
+    )
     status = models.CharField(max_length=16, choices=MembershipStatus.choices, default=MembershipStatus.ACTIVE)
     plan_code = models.CharField(max_length=16, choices=TenantPlan.choices)
     access_started_at = models.DateTimeField()
@@ -110,6 +158,28 @@ class TenantMembership(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user.email} at {self.tenant.name}"
+
+    def clean(self):
+        super().clean()
+        if self.tenant_user_id and (
+            self.tenant_user.tenant_id != self.tenant_id
+            or self.tenant_user.identity_id != self.user_id
+        ):
+            raise ValidationError(
+                {"tenant_user": "The tenant user must match this membership's tenant and identity."}
+            )
+
+    def save(self, *args, **kwargs):
+        if self.tenant_user_id is None and self.tenant_id and self.user_id:
+            self.tenant_user, _ = TenantUser.objects.get_or_create(
+                tenant_id=self.tenant_id,
+                identity_id=self.user_id,
+                defaults={
+                    "email": self.user.email.strip().lower(),
+                    "status": TenantUserStatus.ACTIVE,
+                },
+            )
+        super().save(*args, **kwargs)
 
     @property
     def is_active(self) -> bool:

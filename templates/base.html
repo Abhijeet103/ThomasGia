@@ -22,7 +22,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{% static 'favicon-32.png' %}">
     <link rel="apple-touch-icon" href="{% static 'apple-touch-icon.png' %}">
 </head>
-<body data-role="{% if request.user.is_authenticated %}{{ request.user.role }}{% else %}guest{% endif %}" data-view-name="{{ request.resolver_match.view_name|default:'' }}">
+<body data-role="{{ request.effective_role }}" data-view-name="{{ request.resolver_match.view_name|default:'' }}">
     <div class="page-shell">
         <header class="topbar">
             <a href="/" class="brand-lockup">
@@ -52,15 +52,18 @@
                         {% if request.user.is_authenticated %}
                             <div class="user-menu-meta">
                                 <strong>{{ request.user.email }}</strong>
-                                <span class="role-chip role-{{ request.user.role }}">{{ request.user.get_role_display }}</span>
-                                {% if request.user.subscription_expires_at %}
-                                    <span class="muted">Subscription valid until {{ request.user.subscription_expires_at|date:"d M Y H:i" }}</span>
+                                <span class="role-chip role-{{ request.effective_role }}">{{ request.effective_role_label }}</span>
+                                {% if request.effective_access_expires_at %}
+                                    <span class="muted">
+                                        {% if request.effective_access_tenant_managed %}Access through {{ request.effective_access_source_label }} until{% else %}Subscription valid until{% endif %}
+                                        {{ request.effective_access_expires_at|date:"d M Y H:i" }}
+                                    </span>
                                 {% else %}
                                     <span class="muted">No active subscription</span>
                                 {% endif %}
                             </div>
                             <div class="user-menu-links">
-                                {% if request.user.has_active_subscription %}
+                                {% if request.effective_access_active %}
                                     <a href="{% url 'pages:subscription' %}" data-show-loader>Subscription</a>
                                 {% else %}
                                     <a href="{% url 'pages:pricing' %}" data-show-loader>Pricing</a>
@@ -126,7 +129,7 @@
                                 <li><a href="{% url 'pages:practice' %}" data-show-loader>Practice</a></li>
                                 {% if request.user.is_authenticated %}
                                     <li><a href="{% url 'pages:dashboard' %}" data-show-loader>Dashboard</a></li>
-                                    {% if request.user.has_active_subscription %}
+                                    {% if request.effective_access_active %}
                                         <li><a href="{% url 'pages:subscription' %}" data-show-loader>Subscription</a></li>
                                     {% else %}
                                         <li><a href="{% url 'pages:pricing' %}" data-show-loader>Pricing</a></li>
