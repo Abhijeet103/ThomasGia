@@ -29,9 +29,9 @@ chmod +x deploy/check_certificate_domains.sh
 ./deploy/setup_certbot_nginx.sh mindmetric.store support@mindmetric.store
 ```
 
-Certbot validates each exact hostname through nginx's HTTP challenge location,
-installs the certificate, redirects HTTP to HTTPS, and enables its renewal
-timer.
+Certbot's nginx authenticator temporarily installs the HTTP challenge route for
+each exact hostname, installs the certificate, redirects HTTP to HTTPS, and
+enables its renewal timer.
 
 ## Deployment Behavior
 

@@ -65,8 +65,7 @@ done
 
 CERTBOT_ARGS=(
   run
-  --authenticator webroot
-  --webroot-path /var/www/certbot
+  --authenticator nginx
   --installer nginx
   --cert-name "$CERT_NAME"
   --force-renewal
