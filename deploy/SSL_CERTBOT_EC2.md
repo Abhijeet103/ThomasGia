@@ -1,79 +1,48 @@
 # Certbot SSL Setup On EC2
 
-This project already includes:
+The deployment uses one certificate containing the apex domain, `www`, and
+every tenant hostname listed in `deploy/tenant_domains.txt`. It does not require
+a wildcard certificate or DNS TXT challenge.
 
-- `deploy/mindmetric.conf` for nginx
-- `deploy/mindmetric.service` for the Django ASGI app
-- `deploy/setup_certbot_nginx.sh` to install Certbot and request the certificate
+## Add A Tenant Domain
 
-## 1. Point the domain to EC2
+Add one first-level hostname per line:
 
-In GoDaddy DNS, make sure:
-
-- `A` record for `@` points to your EC2 Elastic IP
-- `A` record for `www` points to the same Elastic IP, or `CNAME` to `@`
-- `A` record for `*` points to the same EC2 Elastic IP
-
-Wait for DNS to resolve before requesting the certificate.
-
-## 2. Deploy the nginx config
-
-From the EC2 server:
-
-```bash
-cd /home/ec2-user/ThomasGia
-sudo cp deploy/mindmetric.conf /etc/nginx/conf.d/mindmetric.conf
-sudo mkdir -p /var/www/certbot
-sudo nginx -t
-sudo systemctl restart nginx
+```text
+demo.mindmetric.store
+academy.mindmetric.store
 ```
 
-## 3. Request the SSL certificate
+Blank lines and lines beginning with `#` are ignored. Do not add
+`mindmetric.store` or `www.mindmetric.store`; they are included automatically.
+
+Before deploying, make sure every listed hostname resolves to the EC2 Elastic
+IP. A wildcard DNS `A` record pointing `*.mindmetric.store` to EC2 can handle
+this routing without adding a separate DNS record for each tenant.
+
+## Initial Server Setup
 
 ```bash
 cd /home/ec2-user/ThomasGia
 chmod +x deploy/setup_certbot_nginx.sh
-chmod +x deploy/check_wildcard_certificate.sh
-./deploy/setup_certbot_nginx.sh mindmetric.store your-email@example.com
+chmod +x deploy/check_certificate_domains.sh
+./deploy/setup_certbot_nginx.sh mindmetric.store support@mindmetric.store
 ```
 
-Certbot will:
+Certbot validates each exact hostname through nginx's HTTP challenge location,
+installs the certificate, redirects HTTP to HTTPS, and enables its renewal
+timer.
 
-- install the nginx plugin
-- request one certificate for `mindmetric.store` and `*.mindmetric.store`
-- prompt for the `_acme-challenge` TXT record in GoDaddy
-- preserve the certificate name as `mindmetric.store`
-- install the expanded certificate into nginx and enable HTTPS redirects
+## Deployment Behavior
 
-## Wildcard certificate for tenant subdomains
+`deploy/deploy.sh`:
 
-The normal nginx/HTTP challenge cannot issue `*.mindmetric.store`, so the setup
-script uses a DNS challenge. One wildcard certificate covers `www` and every
-first-level tenant such as `demo.mindmetric.store`; do not issue a separate
-certificate for every tenant.
-
-Manual DNS certificates do not renew unattended. For automated deployment,
-provide two executable scripts that create and remove the requested DNS TXT
-record:
-
-```bash
-export CERTBOT_DNS_AUTH_HOOK=/secure/path/certbot-dns-auth
-export CERTBOT_DNS_CLEANUP_HOOK=/secure/path/certbot-dns-cleanup
-./deploy/setup_certbot_nginx.sh mindmetric.store your-email@example.com
-```
-
-Certbot passes values such as `CERTBOT_DOMAIN`, `CERTBOT_VALIDATION`, and
-`CERTBOT_REMAINING_CHALLENGES` to these hooks. Keep DNS API credentials outside
-the repository and restrict the hook file permissions.
-
-## Deployment behavior
-
-`deploy/deploy.sh` now:
-
-- optionally runs `certbot renew`
-- verifies that the installed certificate contains `*.mindmetric.store`
-- verifies that the certificate has at least seven days remaining
-- stops safely rather than deploying tenant hosts with invalid TLS
+- reads tenant hostnames from `deploy/tenant_domains.txt`;
+- renews the current certificate when appropriate;
+- checks that every configured hostname is covered;
+- automatically replaces or expands the certificate when a hostname is
+  missing;
+- rejects invalid hostnames and certificates with less than seven days left.
 
 Supported environment variables:
 
@@ -81,19 +50,15 @@ Supported environment variables:
 CERTBOT_DOMAIN=mindmetric.store
 CERTBOT_CERT_NAME=mindmetric.store
 CERTBOT_AUTO_RENEW=true
-CERTBOT_AUTO_SETUP=false
+CERTBOT_AUTO_SETUP=true
 CERTBOT_EMAIL=support@mindmetric.store
-CERTBOT_DNS_AUTH_HOOK=/secure/path/certbot-dns-auth
-CERTBOT_DNS_CLEANUP_HOOK=/secure/path/certbot-dns-cleanup
+CERTBOT_TENANT_DOMAIN_FILE=deploy/tenant_domains.txt
 ```
 
-Keep `CERTBOT_AUTO_SETUP=false` when using the interactive GoDaddy TXT process.
-Set it to `true` only when both DNS hook scripts are configured; otherwise a
-non-interactive deployment can pause waiting for DNS input.
+The certificate authority allows at most 100 names on one certificate,
+including the apex and `www`, leaving room for 98 tenant hostnames.
 
-## 4. Django settings to confirm
-
-Make sure production env includes:
+## Django Settings
 
 ```env
 DEBUG=False
@@ -102,21 +67,17 @@ CSRF_TRUSTED_ORIGINS=https://mindmetric.store,https://www.mindmetric.store,https
 TENANT_BASE_DOMAIN=mindmetric.store
 ```
 
-And in Django settings you should keep:
+Keep:
 
 - `SECURE_SSL_REDIRECT = True`
 - `SESSION_COOKIE_SECURE = True`
 - `CSRF_COOKIE_SECURE = True`
 - `SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")`
 
-## 5. Renewal check
-
-For a certificate issued with automated DNS hooks, run:
+## Renewal Check
 
 ```bash
 sudo certbot renew --dry-run
+sudo bash deploy/check_certificate_domains.sh \
+  mindmetric.store mindmetric.store deploy/tenant_domains.txt
 ```
-
-If manual DNS validation was used, rerun `setup_certbot_nginx.sh` before expiry
-or configure the DNS hooks first. The deploy script will warn about renewal
-errors and reject a certificate with less than seven days remaining.

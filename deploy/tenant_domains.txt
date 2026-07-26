@@ -1,0 +1,3 @@
+# Add one active tenant hostname per line.
+# The apex domain and www.mindmetric.store are included automatically.
+demo.mindmetric.store

@@ -9,8 +9,7 @@ else
   EMAIL="${2:-}"
 fi
 CERT_NAME="${CERTBOT_CERT_NAME:-$DOMAIN}"
-AUTH_HOOK="${CERTBOT_DNS_AUTH_HOOK:-}"
-CLEANUP_HOOK="${CERTBOT_DNS_CLEANUP_HOOK:-}"
+DOMAIN_FILE="${CERTBOT_TENANT_DOMAIN_FILE:-deploy/tenant_domains.txt}"
 
 if [[ -z "$EMAIL" ]]; then
   echo "Usage: $0 <domain> <email>"
@@ -36,52 +35,63 @@ echo "Checking nginx config..."
 sudo nginx -t
 sudo systemctl reload nginx
 
+if [[ ! -r "$DOMAIN_FILE" ]]; then
+  echo "Tenant domain file not found: $DOMAIN_FILE"
+  exit 1
+fi
+
+TENANT_DOMAINS=()
+while IFS= read -r tenant_domain; do
+  TENANT_DOMAINS+=("$tenant_domain")
+done < <(
+  sed 's/#.*//' "$DOMAIN_FILE" \
+    | tr '[:upper:]' '[:lower:]' \
+    | awk 'NF {print $1}' \
+    | sort -u
+)
+CERTIFICATE_DOMAINS=("$DOMAIN" "www.$DOMAIN" "${TENANT_DOMAINS[@]}")
+
+if (( ${#CERTIFICATE_DOMAINS[@]} > 100 )); then
+  echo "A certificate can contain at most 100 domain names."
+  exit 1
+fi
+
+for tenant_domain in "${TENANT_DOMAINS[@]}"; do
+  if [[ ! "$tenant_domain" =~ ^[a-z0-9][a-z0-9-]*\.${DOMAIN//./\\.}$ ]]; then
+    echo "Invalid tenant domain in $DOMAIN_FILE: $tenant_domain"
+    exit 1
+  fi
+done
+
 CERTBOT_ARGS=(
   run
-  --authenticator manual
+  --authenticator webroot
+  --webroot-path /var/www/certbot
   --installer nginx
-  --preferred-challenges dns
   --cert-name "$CERT_NAME"
-  --expand
-  -d "$DOMAIN"
-  -d "*.$DOMAIN"
+  --force-renewal
   --agree-tos
   -m "$EMAIL"
   --redirect
+  --non-interactive
 )
 
-if [[ -n "$AUTH_HOOK" || -n "$CLEANUP_HOOK" ]]; then
-  if [[ ! -x "$AUTH_HOOK" || ! -x "$CLEANUP_HOOK" ]]; then
-    echo "CERTBOT_DNS_AUTH_HOOK and CERTBOT_DNS_CLEANUP_HOOK must both be executable."
-    exit 1
-  fi
+for certificate_domain in "${CERTIFICATE_DOMAINS[@]}"; do
+  CERTBOT_ARGS+=(-d "$certificate_domain")
+done
 
-  CERTBOT_ARGS+=(
-    --manual-auth-hook "$AUTH_HOOK"
-    --manual-cleanup-hook "$CLEANUP_HOOK"
-    --non-interactive
-  )
-else
-  echo "No DNS hooks configured. Certbot will prompt for the _acme-challenge TXT record."
-fi
-
-echo "Requesting one certificate for $DOMAIN and *.$DOMAIN..."
+echo "Requesting one certificate for ${#CERTIFICATE_DOMAINS[@]} configured domains..."
 sudo certbot "${CERTBOT_ARGS[@]}"
 
-echo "Checking wildcard coverage..."
-sudo bash deploy/check_wildcard_certificate.sh "$DOMAIN" "$CERT_NAME"
+echo "Checking configured domain coverage..."
+sudo bash deploy/check_certificate_domains.sh "$DOMAIN" "$CERT_NAME" "$DOMAIN_FILE"
 
 echo "Testing and reloading nginx..."
 sudo nginx -t
 sudo systemctl reload nginx
 
-if [[ -n "$AUTH_HOOK" && -n "$CLEANUP_HOOK" ]]; then
-  echo "DNS hooks are configured; checking the Certbot renewal timer..."
-  sudo systemctl enable --now certbot-renew.timer 2>/dev/null || true
-  sudo systemctl status certbot-renew.timer --no-pager || true
-else
-  echo "Manual DNS validation was used. Renewal will require the TXT challenge again."
-  echo "Configure CERTBOT_DNS_AUTH_HOOK and CERTBOT_DNS_CLEANUP_HOOK for unattended renewal."
-fi
+echo "Enabling automatic certificate renewal..."
+sudo systemctl enable --now certbot-renew.timer 2>/dev/null || true
+sudo systemctl status certbot-renew.timer --no-pager || true
 
-echo "Wildcard SSL setup complete."
+echo "Tenant domain SSL setup complete."
