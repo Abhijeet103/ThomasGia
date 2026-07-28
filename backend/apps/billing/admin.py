@@ -10,8 +10,50 @@ from django.utils import timezone
 from backend.apps.accounts.models import UserRole
 from backend.apps.tenants.admin_mixins import TenantScopedAdminMixin
 
-from .models import Subscription, SubscriptionStatus
+from .models import BillingPlan, Subscription, SubscriptionStatus
 from .services import calculate_expiry, sync_user_subscription_access
+
+
+@admin.register(BillingPlan)
+class BillingPlanAdmin(admin.ModelAdmin):
+    list_display = ("title", "code", "price", "currency", "duration_label", "is_active", "updated_at")
+    list_editable = ("price", "is_active")
+    list_filter = ("is_active", "currency")
+    search_fields = ("title", "code")
+    ordering = ("display_order", "id")
+    readonly_fields = ("code",)
+    fieldsets = (
+        (
+            "Plan",
+            {
+                "fields": (
+                    "code",
+                    "title",
+                    "price",
+                    "currency",
+                    "duration_label",
+                    "summary",
+                    "display_order",
+                    "is_active",
+                )
+            },
+        ),
+    )
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 def _ensure_manual_subscription(subscription: Subscription, plan_code: str, extra_days: int | None = None) -> None:

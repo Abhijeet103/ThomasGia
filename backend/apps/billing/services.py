@@ -6,6 +6,7 @@ import logging
 from base64 import b64encode
 from dataclasses import dataclass
 from datetime import timedelta
+from decimal import Decimal
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -18,7 +19,7 @@ from backend.apps.accounts.models import User, UserRole
 from backend.apps.accounts.emails import send_subscription_activated_email, send_subscription_canceled_email
 from backend.apps.tenants.utils import get_current_tenant
 
-from .models import Subscription, SubscriptionStatus
+from .models import BillingPlan, Subscription, SubscriptionStatus
 
 
 logger = logging.getLogger(__name__)
@@ -38,9 +39,9 @@ class PlanDefinition:
     title: str
     price_display: str
     price_value: str
+    currency: str
     duration_label: str
     summary: str
-    price_id: str
 
 
 PLAN_ORDER = ("weekly", "monthly", "yearly")
@@ -63,43 +64,18 @@ def _safe_plan_rank(plan_code: str | None) -> int | None:
         return None
 
 
-def _price_id_for(plan_code: str) -> str:
-    return {
-        "weekly": settings.STRIPE_PRICE_WEEKLY,
-        "monthly": settings.STRIPE_PRICE_MONTHLY,
-        "yearly": settings.STRIPE_PRICE_YEARLY,
-    }[plan_code]
-
-
 def get_plan_catalog() -> list[PlanDefinition]:
     return [
         PlanDefinition(
-            code="weekly",
-            title="Weekly",
-            price_display="$9.99",
-            price_value="9.99",
-            duration_label="7 days access",
-            summary="Unlimited full tests and section-wise tests for one week.",
-            price_id=_price_id_for("weekly"),
-        ),
-        PlanDefinition(
-            code="monthly",
-            title="Monthly",
-            price_display="$19.99",
-            price_value="19.99",
-            duration_label="1 month access",
-            summary="Unlimited full tests and section-wise tests for one month.",
-            price_id=_price_id_for("monthly"),
-        ),
-        PlanDefinition(
-            code="yearly",
-            title="Yearly",
-            price_display="$12.99",
-            price_value="12.99",
-            duration_label="1 year access",
-            summary="Unlimited full tests and section-wise tests for one year.",
-            price_id=_price_id_for("yearly"),
-        ),
+            code=plan.code,
+            title=plan.title,
+            price_display=plan.price_display,
+            price_value=f"{plan.price:.2f}",
+            currency=plan.currency,
+            duration_label=plan.duration_label,
+            summary=plan.summary,
+        )
+        for plan in BillingPlan.objects.filter(is_active=True)
     ]
 
 
@@ -112,13 +88,7 @@ def get_plan_definition(plan_code: str) -> PlanDefinition:
 
 
 def stripe_is_configured() -> bool:
-    return bool(
-        settings.STRIPE_SECRET_KEY
-        and settings.STRIPE_WEBHOOK_SECRET
-        and settings.STRIPE_PRICE_WEEKLY
-        and settings.STRIPE_PRICE_MONTHLY
-        and settings.STRIPE_PRICE_YEARLY
-    )
+    return bool(settings.STRIPE_SECRET_KEY and settings.STRIPE_WEBHOOK_SECRET)
 
 
 def paypal_is_configured() -> bool:
@@ -377,7 +347,19 @@ def create_checkout_session(user: User, plan_code: str, base_url: str | None = N
 
     checkout_session = stripe.checkout.Session.create(
         mode="payment",
-        line_items=[{"price": plan.price_id, "quantity": 1}],
+        line_items=[
+            {
+                "price_data": {
+                    "currency": plan.currency.lower(),
+                    "unit_amount": int(Decimal(plan.price_value) * 100),
+                    "product_data": {
+                        "name": f"MindMetric {plan.title} access",
+                        "description": plan.summary,
+                    },
+                },
+                "quantity": 1,
+            }
+        ],
         success_url=success_url,
         cancel_url=cancel_url,
         client_reference_id=str(user.id),
@@ -413,7 +395,7 @@ def create_paypal_order(user: User, plan_code: str, base_url: str | None = None)
             "purchase_units": [
                 {
                     "amount": {
-                        "currency_code": "USD",
+                        "currency_code": plan.currency,
                         "value": plan.price_value,
                     },
                     "description": f"MindMetric {plan.title} access",
