@@ -159,13 +159,6 @@ def _track_open_url(assessment_key: str) -> str:
     return reverse("pages:assessment-practice", args=[assessment_key])
 
 
-def _track_open_url_for_request(request, assessment_key: str) -> str:
-    target_url = _track_open_url(assessment_key)
-    if request.user.is_authenticated:
-        return target_url
-    return f"{reverse('pages:login')}?next={target_url}"
-
-
 def _notify_redirect_target(request) -> str:
     return request.META.get("HTTP_REFERER") or reverse("pages:practice")
 
@@ -239,7 +232,7 @@ def _build_practice_assessment_cards(request) -> list[dict]:
                 "status_label": "Live" if visibility_state == PracticeTrackVisibility.ACCESSIBLE else "Coming soon",
                 "status_class": "track-live" if visibility_state == PracticeTrackVisibility.ACCESSIBLE else "track-upcoming",
                 "can_open": can_open,
-                "open_url": _track_open_url_for_request(request, base["key"]) if route_enabled else "",
+                "open_url": _track_open_url(base["key"]) if route_enabled else "",
                 "notify_form": TrackWaitlistForm(initial={"assessment_type": base["key"], "next": _notify_redirect_target(request)}),
                 "is_waitlisted": base["key"] in waitlisted_assessments,
                 "login_notify_url": _notify_me_login_url(request),

@@ -234,6 +234,24 @@ class TenantAccessFlowTests(TestCase):
         assessment_keys = [card["key"] for card in response.context["assessments"]]
         self.assertEqual(assessment_keys, ["prepgia", "ccat"])
 
+    def test_anonymous_open_practice_link_does_not_require_login(self):
+        response = self.client.get(
+            reverse("pages:practice"),
+            HTTP_HOST=self.platform.primary_domain,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        prepgia_card = next(
+            card
+            for card in response.context["assessments"]
+            if card["key"] == "prepgia"
+        )
+        self.assertEqual(
+            prepgia_card["open_url"],
+            reverse("pages:assessment-practice", args=["prepgia"]),
+        )
+        self.assertNotIn(reverse("pages:login"), prepgia_card["open_url"])
+
     def test_unselected_assessment_is_hidden_and_direct_route_is_not_found(self):
         tenant = self.create_institution()
         self.client.force_login(self.user)
