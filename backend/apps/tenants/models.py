@@ -189,6 +189,13 @@ class TenantMembership(models.Model):
 class TenantEnrollmentCode(models.Model):
     tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="enrollment_codes")
     label = models.CharField(max_length=120, blank=True)
+    code = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        editable=False,
+        help_text="Full enrollment code retained for display to platform administrators.",
+    )
     code_prefix = models.CharField(max_length=12)
     code_hash = models.CharField(max_length=64, unique=True)
     expires_at = models.DateTimeField(blank=True, null=True)

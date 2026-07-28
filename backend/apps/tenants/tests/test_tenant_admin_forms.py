@@ -1,11 +1,12 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
+from django.urls import reverse
 
 from backend.apps.assessments.models import AssessmentTrack, PracticeTrackVisibility
 from backend.apps.tenants.admin import TenantAdmin
 from backend.apps.tenants.forms import TenantAdminForm
-from backend.apps.tenants.models import Tenant, TenantType
+from backend.apps.tenants.models import Tenant, TenantEnrollmentCode, TenantType
 
 
 User = get_user_model()
@@ -120,3 +121,41 @@ class TenantAssessmentAdminFormTests(TestCase):
             states["shl_verify"],
             (PracticeTrackVisibility.HIDDEN, True),
         )
+
+    def test_generated_enrollment_code_is_visible_in_admin(self):
+        self.client.force_login(self.superuser)
+
+        response = self.client.post(
+            reverse(
+                "admin:tenants_tenant_generate_code",
+                args=[self.tenant.pk],
+            ),
+            {
+                "label": "Cohort A",
+                "max_uses": 25,
+                "expires_at": "",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("admin:tenants_tenantenrollmentcode_changelist"),
+            fetch_redirect_response=False,
+        )
+        enrollment_code = TenantEnrollmentCode.objects.get(
+            tenant=self.tenant,
+            label="Cohort A",
+        )
+        self.assertRegex(enrollment_code.code, r"^MM-[A-F0-9]{8}$")
+        self.assertEqual(
+            enrollment_code.code_hash,
+            TenantEnrollmentCode.hash_code(enrollment_code.code),
+        )
+
+        change_response = self.client.get(
+            reverse(
+                "admin:tenants_tenantenrollmentcode_change",
+                args=[enrollment_code.pk],
+            )
+        )
+        self.assertContains(change_response, enrollment_code.code)

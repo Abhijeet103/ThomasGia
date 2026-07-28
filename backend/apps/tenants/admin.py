@@ -259,6 +259,7 @@ class TenantAdmin(PlatformSuperuserAdminMixin, admin.ModelAdmin):
                 TenantEnrollmentCode.objects.create(
                     tenant=tenant,
                     label=form.cleaned_data["label"],
+                    code=raw_code,
                     code_prefix=raw_code[:7],
                     code_hash=TenantEnrollmentCode.hash_code(raw_code),
                     expires_at=form.cleaned_data["expires_at"],
@@ -390,13 +391,38 @@ class TenantUserAdmin(PlatformSuperuserAdminMixin, admin.ModelAdmin):
 
 @admin.register(TenantEnrollmentCode)
 class TenantEnrollmentCodeAdmin(PlatformSuperuserAdminMixin, admin.ModelAdmin):
-    list_display = ("label", "tenant", "code_prefix", "usage_count", "max_uses", "expires_at", "is_active", "created_at")
+    list_display = (
+        "label",
+        "tenant",
+        "enrollment_code",
+        "usage_count",
+        "max_uses",
+        "expires_at",
+        "is_active",
+        "created_at",
+    )
     list_filter = ("tenant", "is_active")
-    search_fields = ("label", "tenant__name", "code_prefix")
-    readonly_fields = ("tenant", "label", "code_prefix", "code_hash", "expires_at", "max_uses", "usage_count", "created_by", "created_at", "updated_at")
+    search_fields = ("label", "tenant__name", "code", "code_prefix")
+    readonly_fields = (
+        "tenant",
+        "label",
+        "enrollment_code",
+        "code_prefix",
+        "code_hash",
+        "expires_at",
+        "max_uses",
+        "usage_count",
+        "created_by",
+        "created_at",
+        "updated_at",
+    )
 
     def has_add_permission(self, request):
         return False
+
+    @admin.display(description="Enrollment code", empty_value="Unavailable for legacy code")
+    def enrollment_code(self, obj):
+        return obj.code or None
 
 
 @admin.register(TenantStudentInvite)

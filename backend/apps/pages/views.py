@@ -57,6 +57,7 @@ from backend.apps.assessments.services import (
 )
 from .emails import send_sale_inquiry_notification
 from .forms import SaleInquiryForm, TestSuggestionForm, TrackWaitlistForm
+from .seo import assessment_seo_metadata, module_seo_metadata
 from prepgia.generators import generate_question
 from prepgia.preview_data import get_questions
 
@@ -323,8 +324,11 @@ class HomePageView(TemplateView):
         all_questions = get_questions()
         context.update(
             {
-                "page_title": "MindMetric | Cognitive And Psychometric Test Practice Platform",
-                "meta_description": "Practice CCAT and Thomas GIA-style cognitive tests with module drills, full mocks, Google login, and subscription access.",
+                "page_title": "MindMetric: Thomas GIA, CCAT & Psychometric Test Practice",
+                "meta_description": (
+                    "Prepare for the Thomas International GIA and Criteria CCAT with "
+                    "timed module drills, full mock tests, feedback and progress tracking."
+                ),
                 "question_count": len(all_questions),
                 "sections": _section_cards(ASSESSMENT_PREPGIA),
                 "home_assessments": get_assessment_cards(),
@@ -345,8 +349,11 @@ class PricingPageView(TemplateView):
             active_subscription = self.request.user.subscriptions.filter(status="active").order_by("-updated_at").first()
         context.update(
             {
-                "page_title": "Pricing | MindMetric",
-                "meta_description": "View free and paid plans for MindMetric practice tests.",
+                "page_title": "Psychometric Test Practice Plans & Pricing | MindMetric",
+                "meta_description": (
+                    "Compare MindMetric plans for Thomas GIA, CCAT and psychometric "
+                    "test practice, including timed drills and full mock tests."
+                ),
                 "active_subscription": active_subscription,
                 "plans": _visible_frontend_plans(self.request.user, active_subscription),
                 "paypal_enabled": paypal_is_configured(),
@@ -475,8 +482,11 @@ class PracticePageView(TemplateView):
         context = super().get_context_data(**kwargs)
         context.update(
             {
-                "page_title": "Practice | MindMetric",
-                "meta_description": "Choose between Thomas GIA and CCAT practice tracks.",
+                "page_title": "Psychometric Practice Tests: Thomas GIA & CCAT | MindMetric",
+                "meta_description": (
+                    "Choose Thomas GIA or Criteria CCAT practice tests with timed "
+                    "module drills, sample questions, full mocks and progress tracking."
+                ),
                 "assessments": _build_practice_assessment_cards(self.request),
                 "suggest_test_form": TestSuggestionForm(
                     initial={
@@ -577,6 +587,10 @@ class AssessmentPracticePageView(TemplateView):
         if not tenant_allows_assessment(tenant, assessment_type):
             raise Http404("Assessment not available for this institution.")
         assessment_config = get_assessment_config(assessment_type)
+        seo_metadata = assessment_seo_metadata(
+            assessment_type,
+            assessment_config["title"],
+        )
         sections = _practice_section_cards(self.request, assessment_type)
         user = self.request.user
         if user.is_authenticated and (
@@ -605,8 +619,8 @@ class AssessmentPracticePageView(TemplateView):
             module_test_attempts_left = FREE_SECTION_TEST_LIMIT
         context.update(
             {
-                "page_title": f"{assessment_config['title']} Practice | MindMetric",
-                "meta_description": f"Choose full test or module-wise practice for {assessment_config['title']}.",
+                "page_title": seo_metadata["page_title"],
+                "meta_description": seo_metadata["meta_description"],
                 "assessment": assessment_config,
                 "assessment_slug": assessment_type,
                 "sections": sections,
@@ -716,6 +730,13 @@ class SectionDetailPageView(TemplateView):
             mode = "practice"
 
         meta = get_module_meta(section_type)
+        seo_metadata = module_seo_metadata(
+            assessment_type,
+            str(section_type),
+            assessment_config["title"],
+            meta["title"],
+            meta["description"],
+        )
         practice_question_total = max(1, get_time_limit_seconds(section_type) // 2)
         practice_questions_solved = 0
         if self.request.user.is_authenticated:
@@ -731,8 +752,8 @@ class SectionDetailPageView(TemplateView):
         practice_previews = _build_section_questions(section_type, "practice", user=self.request.user)
         context.update(
             {
-                "page_title": f"{meta['title']} Practice | MindMetric",
-                "meta_description": meta["description"],
+                "page_title": seo_metadata["page_title"],
+                "meta_description": seo_metadata["meta_description"],
                 "assessment": assessment_config,
                 "assessment_slug": assessment_type,
                 "section": {

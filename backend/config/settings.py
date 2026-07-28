@@ -201,6 +201,8 @@ SITE_URL = (
     else "https://mindmetric.store"
 )
 GOOGLE_SITE_VERIFICATION = os.getenv("GOOGLE_SITE_VERIFICATION", "")
+GOOGLE_ANALYTICS_MEASUREMENT_ID = os.getenv("GOOGLE_ANALYTICS_MEASUREMENT_ID", "").strip()
+THOMAS_GIA_BLOG_URL = os.getenv("THOMAS_GIA_BLOG_URL", "").strip()
 DATABASE_ADMIN_URL = os.getenv("DATABASE_ADMIN_URL", "").strip()
 DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG", "mindmetric")
 TENANT_BASE_DOMAIN = os.getenv("TENANT_BASE_DOMAIN", "mindmetric.store").strip().lower()
