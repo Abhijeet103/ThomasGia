@@ -29,7 +29,13 @@
                 {% endif %}
                 <span class="kicker">{{ plan.title }}</span>
                 <div class="pricing-plan-price-row">
+                    {% if plan.has_discount %}
+                        <span class="pricing-plan-regular-price">{{ plan.regular_price_display }}</span>
+                    {% endif %}
                     <strong>{{ plan.price_display }}</strong>
+                    {% if plan.has_discount %}
+                        <span class="pricing-discount-badge">Save {{ plan.discount_percent }}%</span>
+                    {% endif %}
                 </div>
                 <p class="pricing-plan-duration">{{ plan.duration_label }}</p>
                 <ul class="pricing-feature-list">

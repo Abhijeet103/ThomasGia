@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import csv
 from datetime import timedelta
+from decimal import Decimal, ROUND_HALF_UP
 
+from django import forms
 from django.contrib import admin, messages
 from django.http import HttpResponse
+from django.shortcuts import render
 from django.utils import timezone
 
 from backend.apps.accounts.models import UserRole
@@ -14,14 +17,34 @@ from .models import BillingPlan, Subscription, SubscriptionStatus
 from .services import calculate_expiry, sync_user_subscription_access
 
 
+class BillingPlanDiscountForm(forms.Form):
+    percentage = forms.IntegerField(
+        min_value=1,
+        max_value=90,
+        label="Discount percentage",
+        help_text="Enter a whole percentage from 1 to 90.",
+        widget=forms.NumberInput(attrs={"min": 1, "max": 90, "step": 1}),
+    )
+
+
 @admin.register(BillingPlan)
 class BillingPlanAdmin(admin.ModelAdmin):
-    list_display = ("title", "code", "price", "currency", "duration_label", "is_active", "updated_at")
-    list_editable = ("price", "is_active")
+    list_display = (
+        "title",
+        "code",
+        "price",
+        "sale_price",
+        "currency",
+        "duration_label",
+        "is_active",
+        "updated_at",
+    )
+    list_editable = ("price", "sale_price", "is_active")
     list_filter = ("is_active", "currency")
     search_fields = ("title", "code")
     ordering = ("display_order", "id")
     readonly_fields = ("code",)
+    actions = ("apply_percentage_discount", "clear_sale_discount")
     fieldsets = (
         (
             "Plan",
@@ -30,6 +53,7 @@ class BillingPlanAdmin(admin.ModelAdmin):
                     "code",
                     "title",
                     "price",
+                    "sale_price",
                     "currency",
                     "duration_label",
                     "summary",
@@ -54,6 +78,57 @@ class BillingPlanAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    @admin.action(description="Apply percentage discount to selected plans")
+    def apply_percentage_discount(self, request, queryset):
+        if "confirm_discount" in request.POST:
+            form = BillingPlanDiscountForm(request.POST)
+            if form.is_valid():
+                percentage = form.cleaned_data["percentage"]
+                multiplier = (
+                    Decimal("100") - Decimal(percentage)
+                ) / Decimal("100")
+                updated = 0
+                for plan in queryset:
+                    plan.sale_price = (plan.price * multiplier).quantize(
+                        Decimal("0.01"),
+                        rounding=ROUND_HALF_UP,
+                    )
+                    plan.full_clean()
+                    plan.save(update_fields=("sale_price", "updated_at"))
+                    updated += 1
+                self.message_user(
+                    request,
+                    f"Applied a {percentage}% discount to {updated} plan(s).",
+                    level=messages.SUCCESS,
+                )
+                return None
+        else:
+            form = BillingPlanDiscountForm()
+
+        return render(
+            request,
+            "admin/billing/billingplan/apply_discount.html",
+            {
+                **self.admin_site.each_context(request),
+                "opts": self.model._meta,
+                "title": "Apply percentage discount",
+                "plans": queryset,
+                "form": form,
+                "action_name": "apply_percentage_discount",
+            },
+        )
+
+    @admin.action(description="Clear sale discount from selected plans")
+    def clear_sale_discount(self, request, queryset):
+        updated = queryset.exclude(sale_price__isnull=True).update(
+            sale_price=None,
+        )
+        self.message_user(
+            request,
+            f"Cleared the sale discount from {updated} plan(s).",
+            level=messages.SUCCESS,
+        )
 
 
 def _ensure_manual_subscription(subscription: Subscription, plan_code: str, extra_days: int | None = None) -> None:

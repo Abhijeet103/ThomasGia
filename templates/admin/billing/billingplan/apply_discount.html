@@ -1,0 +1,41 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+  <div id="content-main">
+    <p>Apply one discount percentage to the selected billing plans.</p>
+
+    <ul>
+      {% for plan in plans %}
+        <li>
+          <strong>{{ plan.title }}</strong>
+          &mdash; regular price {{ plan.price_display }}
+        </li>
+      {% endfor %}
+    </ul>
+
+    <form method="post">
+      {% csrf_token %}
+      <fieldset class="module aligned">
+        {{ form.as_p }}
+      </fieldset>
+
+      {% for plan in plans %}
+        <input type="hidden" name="_selected_action" value="{{ plan.pk }}">
+      {% endfor %}
+      <input type="hidden" name="action" value="{{ action_name }}">
+
+      <div class="submit-row">
+        <input
+          type="submit"
+          name="confirm_discount"
+          value="Apply discount"
+          class="default"
+        >
+        <a href="{% url 'admin:billing_billingplan_changelist' %}" class="button cancel-link">
+          Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

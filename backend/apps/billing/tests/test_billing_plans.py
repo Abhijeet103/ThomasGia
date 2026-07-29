@@ -1,11 +1,19 @@
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
+from django.urls import reverse
 
 from backend.apps.billing.models import BillingPlan
-from backend.apps.billing.services import create_checkout_session, get_plan_definition
+from backend.apps.billing.services import (
+    build_plan_cards,
+    create_checkout_session,
+    create_paypal_order,
+    get_plan_definition,
+)
 
 
 User = get_user_model()
@@ -21,6 +29,48 @@ class BillingPlanTests(TestCase):
 
         self.assertEqual(definition.price_display, "$14.50")
         self.assertEqual(definition.price_value, "14.50")
+
+    def test_sale_price_becomes_effective_price_and_exposes_discount(self):
+        plan = BillingPlan.objects.get(code="monthly")
+        plan.price = Decimal("19.99")
+        plan.sale_price = Decimal("14.99")
+        plan.save(update_fields=("price", "sale_price", "updated_at"))
+
+        definition = get_plan_definition("monthly")
+        card = next(
+            item
+            for item in build_plan_cards(None, None)
+            if item["code"] == "monthly"
+        )
+
+        self.assertEqual(definition.regular_price_display, "$19.99")
+        self.assertEqual(definition.price_display, "$14.99")
+        self.assertEqual(definition.price_value, "14.99")
+        self.assertTrue(definition.has_discount)
+        self.assertEqual(definition.discount_percent, 25)
+        self.assertEqual(card["regular_price_display"], "$19.99")
+        self.assertEqual(card["price_display"], "$14.99")
+        self.assertEqual(card["discount_percent"], 25)
+
+    def test_sale_price_cannot_exceed_regular_price(self):
+        plan = BillingPlan.objects.get(code="weekly")
+        plan.sale_price = plan.price + Decimal("1.00")
+
+        with self.assertRaises(ValidationError):
+            plan.full_clean()
+
+    def test_pricing_page_renders_sale_and_regular_prices(self):
+        plan = BillingPlan.objects.get(code="monthly")
+        plan.price = Decimal("19.99")
+        plan.sale_price = Decimal("14.99")
+        plan.save(update_fields=("price", "sale_price", "updated_at"))
+
+        response = self.client.get("/pricing/", HTTP_HOST="mindmetric.store")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "$19.99")
+        self.assertContains(response, "$14.99")
+        self.assertContains(response, "Save 25%")
 
     @override_settings(
         STRIPE_SECRET_KEY="sk_test",
@@ -47,3 +97,151 @@ class BillingPlanTests(TestCase):
         line_item = create_session.call_args.kwargs["line_items"][0]
         self.assertEqual(line_item["price_data"]["unit_amount"], 2475)
         self.assertEqual(line_item["price_data"]["currency"], "usd")
+
+    @override_settings(
+        STRIPE_SECRET_KEY="sk_test",
+        STRIPE_WEBHOOK_SECRET="whsec_test",
+    )
+    @patch("backend.apps.billing.services.stripe.checkout.Session.create")
+    def test_stripe_checkout_charges_sale_price(self, create_session):
+        plan = BillingPlan.objects.get(code="monthly")
+        plan.sale_price = Decimal("12.25")
+        plan.save(update_fields=("sale_price", "updated_at"))
+        user = User.objects.create_user(
+            email="stripe-sale@example.com",
+            password="secret",
+        )
+        create_session.return_value = SimpleNamespace(
+            id="cs_sale",
+            url="https://checkout.stripe.test/sale",
+        )
+
+        create_checkout_session(
+            user,
+            "monthly",
+            base_url="https://mindmetric.store",
+        )
+
+        line_item = create_session.call_args.kwargs["line_items"][0]
+        self.assertEqual(line_item["price_data"]["unit_amount"], 1225)
+
+    @override_settings(
+        PAYPAL_CLIENT_ID="paypal-client",
+        PAYPAL_CLIENT_SECRET="paypal-secret",
+    )
+    @patch("backend.apps.billing.services._paypal_request")
+    def test_paypal_checkout_charges_sale_price(self, paypal_request):
+        plan = BillingPlan.objects.get(code="weekly")
+        plan.sale_price = Decimal("7.50")
+        plan.save(update_fields=("sale_price", "updated_at"))
+        user = User.objects.create_user(
+            email="paypal-sale@example.com",
+            password="secret",
+        )
+        paypal_request.return_value = {
+            "links": [
+                {
+                    "rel": "approve",
+                    "href": "https://paypal.test/approve",
+                }
+            ]
+        }
+
+        approval_url = create_paypal_order(
+            user,
+            "weekly",
+            base_url="https://mindmetric.store",
+        )
+
+        self.assertEqual(approval_url, "https://paypal.test/approve")
+        payload = paypal_request.call_args.args[2]
+        self.assertEqual(
+            payload["purchase_units"][0]["amount"]["value"],
+            "7.50",
+        )
+
+    def test_admin_action_applies_percentage_discount(self):
+        admin_user = User.objects.create_superuser(
+            email="billing-admin@example.com",
+            password="secret",
+        )
+        self.client.force_login(admin_user)
+        weekly = BillingPlan.objects.get(code="weekly")
+        monthly = BillingPlan.objects.get(code="monthly")
+        changelist_url = reverse("admin:billing_billingplan_changelist")
+        selected_ids = [str(weekly.pk), str(monthly.pk)]
+
+        intermediate = self.client.post(
+            changelist_url,
+            {
+                "action": "apply_percentage_discount",
+                "_selected_action": selected_ids,
+            },
+        )
+
+        self.assertEqual(intermediate.status_code, 200)
+        self.assertContains(intermediate, "Discount percentage")
+
+        applied = self.client.post(
+            changelist_url,
+            {
+                "action": "apply_percentage_discount",
+                "_selected_action": selected_ids,
+                "percentage": "30",
+                "confirm_discount": "Apply discount",
+            },
+        )
+
+        self.assertEqual(applied.status_code, 302)
+        weekly.refresh_from_db()
+        monthly.refresh_from_db()
+        self.assertEqual(weekly.sale_price, Decimal("6.99"))
+        self.assertEqual(monthly.sale_price, Decimal("13.99"))
+
+    def test_admin_discount_action_rejects_more_than_ninety_percent(self):
+        admin_user = User.objects.create_superuser(
+            email="discount-limit@example.com",
+            password="secret",
+        )
+        self.client.force_login(admin_user)
+        weekly = BillingPlan.objects.get(code="weekly")
+
+        response = self.client.post(
+            reverse("admin:billing_billingplan_changelist"),
+            {
+                "action": "apply_percentage_discount",
+                "_selected_action": [str(weekly.pk)],
+                "percentage": "91",
+                "confirm_discount": "Apply discount",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "Ensure this value is less than or equal to 90",
+        )
+        weekly.refresh_from_db()
+        self.assertIsNone(weekly.sale_price)
+
+    def test_admin_action_clears_sale_discount(self):
+        admin_user = User.objects.create_superuser(
+            email="clear-discount@example.com",
+            password="secret",
+        )
+        self.client.force_login(admin_user)
+        weekly = BillingPlan.objects.get(code="weekly")
+        weekly.sale_price = Decimal("5.00")
+        weekly.save(update_fields=("sale_price", "updated_at"))
+
+        response = self.client.post(
+            reverse("admin:billing_billingplan_changelist"),
+            {
+                "action": "clear_sale_discount",
+                "_selected_action": [str(weekly.pk)],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        weekly.refresh_from_db()
+        self.assertIsNone(weekly.sale_price)

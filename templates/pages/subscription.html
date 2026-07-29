@@ -74,7 +74,15 @@
                 <article class="card subscription-extension-card">
                     <div class="subscription-extension-badge">{{ plan.extension_code }}</div>
                     <div class="subscription-extension-meta">
-                        <strong>{{ plan.price_display }}</strong>
+                        <div class="subscription-extension-price">
+                            {% if plan.has_discount %}
+                                <span class="subscription-extension-regular-price">{{ plan.regular_price_display }}</span>
+                            {% endif %}
+                            <strong>{{ plan.price_display }}</strong>
+                            {% if plan.has_discount %}
+                                <span class="pricing-discount-badge">Save {{ plan.discount_percent }}%</span>
+                            {% endif %}
+                        </div>
                         <span>{{ plan.extension_copy }}</span>
                     </div>
                     {% if plan.show_action %}

@@ -39,6 +39,9 @@ class PlanDefinition:
     title: str
     price_display: str
     price_value: str
+    regular_price_display: str
+    has_discount: bool
+    discount_percent: int
     currency: str
     duration_label: str
     summary: str
@@ -69,8 +72,11 @@ def get_plan_catalog() -> list[PlanDefinition]:
         PlanDefinition(
             code=plan.code,
             title=plan.title,
-            price_display=plan.price_display,
-            price_value=f"{plan.price:.2f}",
+            price_display=plan.effective_price_display,
+            price_value=f"{plan.effective_price:.2f}",
+            regular_price_display=plan.price_display,
+            has_discount=plan.has_discount,
+            discount_percent=plan.discount_percent,
             currency=plan.currency,
             duration_label=plan.duration_label,
             summary=plan.summary,
@@ -321,6 +327,9 @@ def build_plan_cards(user: User | None, active_subscription: Subscription | None
                 "code": plan.code,
                 "title": plan.title,
                 "price_display": plan.price_display,
+                "regular_price_display": plan.regular_price_display,
+                "has_discount": plan.has_discount,
+                "discount_percent": plan.discount_percent,
                 "duration_label": plan.duration_label,
                 "summary": plan.summary,
                 "is_current": is_current,
