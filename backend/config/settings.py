@@ -58,10 +58,10 @@ MIDDLEWARE = [
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "backend.apps.tenants.middleware.TenantMiddleware",
-    "backend.apps.tenants.middleware.TenantOAuthHandoffMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "backend.apps.tenants.middleware.TenantSessionIsolationMiddleware",
     "backend.apps.tenants.middleware.TenantUserMiddleware",
     "backend.apps.tenants.middleware.TenantAccessMiddleware",
     "backend.apps.billing.middleware.SubscriptionAccessMiddleware",
@@ -207,10 +207,21 @@ DATABASE_ADMIN_URL = os.getenv("DATABASE_ADMIN_URL", "").strip()
 DEFAULT_TENANT_SLUG = os.getenv("DEFAULT_TENANT_SLUG", "mindmetric")
 TENANT_BASE_DOMAIN = os.getenv("TENANT_BASE_DOMAIN", "mindmetric.store").strip().lower()
 if IS_PRODUCTION:
-    SESSION_COOKIE_DOMAIN = f".{TENANT_BASE_DOMAIN}"
+    # The __Host- prefix requires Secure, Path=/, and no Domain attribute.
+    # That makes browser sessions private to the exact tenant hostname.
+    SESSION_COOKIE_NAME = "__Host-mindmetric_session_v2"
+    SESSION_COOKIE_DOMAIN = None
+    SESSION_COOKIE_PATH = "/"
     SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_DOMAIN = f".{TENANT_BASE_DOMAIN}"
+    CSRF_COOKIE_NAME = "__Host-mindmetric_csrf_v2"
+    CSRF_COOKIE_DOMAIN = None
+    CSRF_COOKIE_PATH = "/"
     CSRF_COOKIE_SECURE = True
+else:
+    SESSION_COOKIE_NAME = "mindmetric_session_v2"
+    SESSION_COOKIE_DOMAIN = None
+    CSRF_COOKIE_NAME = "mindmetric_csrf_v2"
+    CSRF_COOKIE_DOMAIN = None
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:8005/0")
 DJANGO_CACHE_KEY_PREFIX = os.getenv("DJANGO_CACHE_KEY_PREFIX", "mindmetric")
 DJANGO_CACHE_TIMEOUT = int(os.getenv("DJANGO_CACHE_TIMEOUT", "300"))
@@ -226,6 +237,25 @@ PAYPAL_CLIENT_SECRET = os.getenv("PAYPAL_CLIENT_SECRET", "")
 PAYPAL_ENV = os.getenv("PAYPAL_ENV", "sandbox").strip().lower()
 PAYPAL_WEBHOOK_ID = os.getenv("PAYPAL_WEBHOOK_ID", "")
 PAYPAL_BRAND_NAME = os.getenv("PAYPAL_BRAND_NAME", "MindMetric")
+
+BILLING_TRUST_PROXY_COUNTRY_HEADERS = (
+    os.getenv("BILLING_TRUST_PROXY_COUNTRY_HEADERS", "False").lower() == "true"
+)
+BILLING_COUNTRY_HEADERS = tuple(
+    header.strip()
+    for header in os.getenv(
+        "BILLING_COUNTRY_HEADERS",
+        "HTTP_CF_IPCOUNTRY,HTTP_CLOUDFRONT_VIEWER_COUNTRY,HTTP_X_COUNTRY_CODE",
+    ).split(",")
+    if header.strip()
+)
+BILLING_IP_COUNTRY_LOOKUP_URL = os.getenv(
+    "BILLING_IP_COUNTRY_LOOKUP_URL",
+    "https://ipapi.co/{ip}/country/",
+).strip()
+BILLING_IP_COUNTRY_LOOKUP_TIMEOUT = float(
+    os.getenv("BILLING_IP_COUNTRY_LOOKUP_TIMEOUT", "1.5")
+)
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")

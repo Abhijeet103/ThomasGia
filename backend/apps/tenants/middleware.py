@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import timedelta
 
 from django.contrib.auth import logout
-from django.conf import settings
 from django.http import HttpResponseForbidden
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -12,6 +11,7 @@ from django.utils import timezone
 from .models import TenantUser, TenantUserStatus
 from .services import get_or_create_tenant_user, get_tenant_access, is_institution_tenant
 from .utils import reset_current_tenant_slug, resolve_tenant_from_host, set_current_tenant_slug
+from .auth import bind_session_to_tenant, session_tenant_id
 
 
 class TenantMiddleware:
@@ -77,28 +77,29 @@ class TenantUserMiddleware:
         return self.get_response(request)
 
 
-class TenantOAuthHandoffMiddleware:
-    GOOGLE_LOGIN_PATH = "/accounts/google/login/"
-
+class TenantSessionIsolationMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
 
     def __call__(self, request):
+        user = getattr(request, "user", None)
         tenant = getattr(request, "tenant", None)
-        if (
-            is_institution_tenant(tenant)
-            and request.method == "GET"
-            and request.path == self.GOOGLE_LOGIN_PATH
-        ):
-            return_path = request.GET.get("next") or "/practice/"
-            if not return_path.startswith("/"):
-                return_path = "/practice/"
-            request.session["tenant_oauth_return_url"] = (
-                f"{request.scheme}://{request.get_host()}{return_path}"
-            )
-            request.session["tenant_oauth_tenant_id"] = tenant.id
-            apex_url = f"{settings.SITE_URL.rstrip('/')}{self.GOOGLE_LOGIN_PATH}"
-            return redirect(apex_url)
+        if user is None or not user.is_authenticated:
+            return self.get_response(request)
+
+        if tenant is None:
+            logout(request)
+            return HttpResponseForbidden("This session is not valid for this domain.")
+
+        bound_tenant_id = session_tenant_id(request)
+        if bound_tenant_id is None:
+            # Login signals bind normal sessions. This fallback supports
+            # existing sessions and internal authentication helpers safely.
+            bind_session_to_tenant(request, tenant)
+        elif bound_tenant_id != tenant.pk:
+            logout(request)
+            return HttpResponseForbidden("This session belongs to a different tenant.")
+
         return self.get_response(request)
 
 

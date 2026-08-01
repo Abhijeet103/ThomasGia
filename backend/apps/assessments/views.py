@@ -23,6 +23,7 @@ from .services import (
     finalize_attempt_from_saved_progress,
     get_full_test_section_payload,
     get_full_test_question,
+    get_module_free_tier_limits,
     record_practice_progress,
     save_attempt_progress,
     submit_full_test_section,
@@ -36,19 +37,29 @@ logger = logging.getLogger(__name__)
 
 class SectionCatalogView(View):
     def get(self, request):
-        return JsonResponse(
-            {
-                "sections": [
+        tenant = get_current_tenant() or (request.user.tenant if request.user.is_authenticated else None)
+        sections = []
+        for assessment_type, config in ASSESSMENT_CONFIG.items():
+            for module in config["modules"]:
+                limits = get_module_free_tier_limits(
+                    tenant,
+                    assessment_type,
+                    module["key"],
+                )
+                sections.append(
                     {
                         "key": module["key"],
                         "label": module["title"],
                         "assessment_type": assessment_type,
                         "time_limit_seconds": SECTION_TIME_LIMITS[module["key"]],
                         "available_in_section_mode": True,
+                        "free_practice_question_limit": limits.practice_question_limit,
+                        "free_test_attempt_limit": limits.test_attempt_limit,
                     }
-                    for assessment_type, config in ASSESSMENT_CONFIG.items()
-                    for module in config["modules"]
-                ],
+                )
+        return JsonResponse(
+            {
+                "sections": sections,
                 "rules": {
                     "default_user_role": "free",
                     "free_full_test_limit": 1,
@@ -81,7 +92,12 @@ class AttemptStartView(View):
             difficulty,
             section_type or "n/a",
         )
-        access = can_start_attempt(request.user, mode, assessment_type=assessment_type)
+        access = can_start_attempt(
+            request.user,
+            mode,
+            assessment_type=assessment_type,
+            section_type=section_type,
+        )
         if not access.allowed:
             logger.warning("Attempt start denied user_id=%s mode=%s reason=%s", request.user.id, mode, access.message)
             return JsonResponse({"detail": access.message}, status=403)
@@ -314,11 +330,19 @@ class PracticeProgressUpdateView(LoginRequiredMixin, View):
             return JsonResponse({"detail": "Valid section_type is required."}, status=400)
 
         solved_increment = int(payload.get("solved_increment", 1) or 1)
-        progress = record_practice_progress(
-            request.user,
+        try:
+            progress = record_practice_progress(
+                request.user,
+                section_type,
+                solved_increment=solved_increment,
+                assessment_type=assessment_type,
+            )
+        except PermissionError as exc:
+            return JsonResponse({"detail": str(exc)}, status=403)
+        limits = get_module_free_tier_limits(
+            get_current_tenant() or request.user.tenant,
+            assessment_type,
             section_type,
-            solved_increment=solved_increment,
-            assessment_type=assessment_type,
         )
         return JsonResponse(
             {
@@ -326,5 +350,6 @@ class PracticeProgressUpdateView(LoginRequiredMixin, View):
                 "section_type": section_type,
                 "practice_questions_solved": progress.practice_questions_solved,
                 "tests_taken": progress.tests_taken,
+                "practice_question_limit": limits.practice_question_limit,
             }
         )

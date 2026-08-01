@@ -24,6 +24,7 @@ from .services import (
     sync_user_subscription_access,
     verify_paypal_webhook,
 )
+from .regions import get_request_country_code
 
 
 class BillingStatusView(View):
@@ -56,7 +57,12 @@ class StartCheckoutView(View):
             return redirect(f"/login/?next={request.path}")
 
         try:
-            checkout_url = create_checkout_session(request.user, plan_code, base_url=f"{request.scheme}://{request.get_host()}")
+            checkout_url = create_checkout_session(
+                request.user,
+                plan_code,
+                base_url=f"{request.scheme}://{request.get_host()}",
+                country_code=get_request_country_code(request),
+            )
         except BillingConfigurationError as exc:
             messages.error(request, str(exc))
             return redirect(request.META.get("HTTP_REFERER") or "pages:subscription")
@@ -70,7 +76,12 @@ class StartPayPalCheckoutView(View):
             return redirect(f"/login/?next={request.path}")
 
         try:
-            approval_url = create_paypal_order(request.user, plan_code, base_url=f"{request.scheme}://{request.get_host()}")
+            approval_url = create_paypal_order(
+                request.user,
+                plan_code,
+                base_url=f"{request.scheme}://{request.get_host()}",
+                country_code=get_request_country_code(request),
+            )
         except (BillingConfigurationError, BillingWebhookError) as exc:
             messages.error(request, str(exc))
             return redirect(request.META.get("HTTP_REFERER") or "pages:subscription")

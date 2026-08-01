@@ -2,6 +2,12 @@
 
 {% block content %}
 <section class="content-section">
+    {% if assessment_slug == "prepgia" %}
+        {% include "partials/thomas_gia_seo_intro.html" %}
+    {% elif assessment_slug == "ccat" %}
+        {% include "partials/ccat_seo_intro.html" %}
+    {% endif %}
+
     <article class="card practice-full-banner">
         <div class="practice-full-banner-copy">
             <h2>{{ assessment.full_test_title }}</h2>
@@ -32,8 +38,12 @@
         <a href="{% url 'pages:assessment-full-test' assessment_slug %}" class="button practice-full-banner-button">Start full test</a>
     </article>
 
-    <div class="practice-section-header top-gap">
-        <h1 class="section-title practice-sections-title">{{ assessment.title }} {{ assessment.module_label }}</h1>
+    <div class="practice-section-header top-gap"{% if assessment_slug == "prepgia" %} id="gia-practice-modules"{% elif assessment_slug == "ccat" %} id="ccat-practice-modules"{% endif %}>
+        {% if assessment_slug == "prepgia" or assessment_slug == "ccat" %}
+            <h2 class="section-title practice-sections-title">{{ assessment.title }} {{ assessment.module_label }}</h2>
+        {% else %}
+            <h1 class="section-title practice-sections-title">{{ assessment.title }} {{ assessment.module_label }}</h1>
+        {% endif %}
         <p class="practice-started-summary">{{ sections_started }} of {{ sections_total }} modules started</p>
     </div>
 
@@ -74,7 +84,7 @@
                         <svg viewBox="0 0 24 24" class="practice-meta-icon" aria-hidden="true">
                             <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                         </svg>
-                        {{ section.question_count }} questions
+                        {{ section.free_practice_question_limit }} free practice questions
                     </span>
                     <span>
                         <svg viewBox="0 0 24 24" class="practice-meta-icon" aria-hidden="true">
@@ -87,6 +97,7 @@
                 <div class="practice-card-stats">
                     <span>{{ section.tests_taken }} tests given</span>
                     <span>{{ section.practice_solved }} practice solved</span>
+                    <span>{{ section.free_test_attempt_limit }} free test{{ section.free_test_attempt_limit|pluralize }}</span>
                 </div>
 
                 <div class="practice-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ section.progress_percent }}">
@@ -99,5 +110,11 @@
             </article>
         {% endfor %}
     </div>
+
+    {% if assessment_slug == "prepgia" %}
+        {% include "partials/thomas_gia_seo_guide.html" %}
+    {% elif assessment_slug == "ccat" %}
+        {% include "partials/ccat_seo_guide.html" %}
+    {% endif %}
 </section>
 {% endblock %}

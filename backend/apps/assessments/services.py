@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 from redis import Redis
 from redis.exceptions import RedisError
@@ -28,7 +29,7 @@ from backend.apps.tenants.services import (
 )
 from backend.apps.tenants.utils import get_current_tenant, get_current_tenant_slug
 
-from .models import Attempt, AttemptMode, AttemptSection, AttemptStatus, SectionProgress, SectionType
+from .models import Attempt, AttemptMode, AttemptSection, AttemptStatus, FreeTierModuleLimit, SectionProgress, SectionType
 
 ACTIVE_ATTEMPT_EXPIRY_SECONDS = 2 * 60 * 60
 _redis_client: Redis | None = None
@@ -52,7 +53,43 @@ FREE_PRACTICE_QUESTION_LIMIT = 10
 
 SECTION_TIME_LIMITS = {section_type: get_time_limit_seconds(section_type) for section_type in SECTION_TYPES}
 
-def can_start_attempt(user: User, mode: str, assessment_type: str = ASSESSMENT_PREPGIA) -> AccessDecision:
+
+@dataclass(frozen=True)
+class ModuleFreeTierLimits:
+    practice_question_limit: int
+    test_attempt_limit: int
+
+
+def get_module_free_tier_limits(tenant, assessment_type: str, section_type: str) -> ModuleFreeTierLimits:
+    configured = FreeTierModuleLimit.objects.filter(
+        tenant=tenant,
+        assessment_type=assessment_type,
+        section_type=section_type,
+    ).values("practice_question_limit", "test_attempt_limit").first()
+    if configured is None:
+        return ModuleFreeTierLimits(FREE_PRACTICE_QUESTION_LIMIT, FREE_SECTION_TEST_LIMIT)
+    return ModuleFreeTierLimits(**configured)
+
+
+def has_unlimited_module_access(user: User, tenant=None) -> bool:
+    resolved_tenant = tenant or get_current_tenant() or user.tenant
+    if user.role == UserRole.PAID:
+        return True
+    if is_institution_tenant(resolved_tenant):
+        return get_tenant_access(
+            tenant=resolved_tenant,
+            user=user,
+            auto_enroll=False,
+        ).allowed
+    return False
+
+
+def can_start_attempt(
+    user: User,
+    mode: str,
+    assessment_type: str = ASSESSMENT_PREPGIA,
+    section_type: str | None = None,
+) -> AccessDecision:
     tenant = get_current_tenant() or user.tenant
     if is_institution_tenant(tenant):
         access = get_tenant_access(tenant=tenant, user=user, auto_enroll=False)
@@ -78,16 +115,20 @@ def can_start_attempt(user: User, mode: str, assessment_type: str = ASSESSMENT_P
         return AccessDecision(True, f"Free tier: {remaining} full test remaining.")
 
     if mode == AttemptMode.SECTION:
+        if not section_type:
+            return AccessDecision(False, "A module is required to start a module test.")
+        limits = get_module_free_tier_limits(tenant, assessment_type, section_type)
         used = Attempt.objects.filter(
             user=user,
             tenant=tenant,
             mode=AttemptMode.SECTION,
             assessment_type=assessment_type,
-        ).count()
-        if used >= FREE_SECTION_TEST_LIMIT:
-            return AccessDecision(False, f"Free users can take up to {FREE_SECTION_TEST_LIMIT} module tests. Upgrade to unlock unlimited access.")
-        remaining = FREE_SECTION_TEST_LIMIT - used
-        return AccessDecision(True, f"Free tier: {remaining} module test(s) remaining.")
+            sections__section_type=section_type,
+        ).distinct().count()
+        if used >= limits.test_attempt_limit:
+            return AccessDecision(False, f"Free users can take up to {limits.test_attempt_limit} {SectionType(section_type).label} test(s). Upgrade to unlock unlimited access.")
+        remaining = limits.test_attempt_limit - used
+        return AccessDecision(True, f"Free tier: {remaining} {SectionType(section_type).label} test(s) remaining.")
 
     return AccessDecision(True, "")
 
@@ -99,7 +140,12 @@ def create_attempt(
     section_type: str | None = None,
     assessment_type: str = ASSESSMENT_PREPGIA,
 ) -> Attempt:
-    decision = can_start_attempt(user, mode, assessment_type=assessment_type)
+    decision = can_start_attempt(
+        user,
+        mode,
+        assessment_type=assessment_type,
+        section_type=section_type,
+    )
     if not decision.allowed:
         raise PermissionError(decision.message)
 
@@ -644,18 +690,29 @@ def record_practice_progress(
 ) -> SectionProgress:
     resolved_assessment_type = assessment_type or get_module_assessment_type(section_type)
     tenant = get_current_tenant() or user.tenant
-    progress, _ = SectionProgress.objects.get_or_create(
-        tenant=tenant,
-        user=user,
-        assessment_type=resolved_assessment_type,
-        section_type=section_type,
-        defaults={"tenant_user": get_or_create_tenant_user(tenant=tenant, user=user)},
-    )
-    if progress.tenant_user_id is None:
-        progress.tenant_user = get_or_create_tenant_user(tenant=tenant, user=user)
-        progress.save(update_fields=["tenant_user", "updated_at"])
-    progress.practice_questions_solved += max(0, solved_increment)
-    progress.save(update_fields=["practice_questions_solved", "updated_at"])
+    tenant_user = get_or_create_tenant_user(tenant=tenant, user=user)
+    with transaction.atomic():
+        progress, _ = SectionProgress.objects.select_for_update().get_or_create(
+            tenant=tenant,
+            user=user,
+            assessment_type=resolved_assessment_type,
+            section_type=section_type,
+            defaults={"tenant_user": tenant_user},
+        )
+        if progress.tenant_user_id is None:
+            progress.tenant_user = tenant_user
+
+        increment = max(0, solved_increment)
+        if not has_unlimited_module_access(user, tenant):
+            limit = get_module_free_tier_limits(tenant, resolved_assessment_type, section_type).practice_question_limit
+            if progress.practice_questions_solved >= limit and increment:
+                raise PermissionError(
+                    f"You have completed the {limit} free {SectionType(section_type).label} practice questions. Upgrade to continue."
+                )
+            increment = min(increment, max(0, limit - progress.practice_questions_solved))
+
+        progress.practice_questions_solved += increment
+        progress.save(update_fields=["tenant_user", "practice_questions_solved", "updated_at"])
     logger.info(
         "Recorded practice progress user_id=%s section=%s solved_total=%s",
         user.id,

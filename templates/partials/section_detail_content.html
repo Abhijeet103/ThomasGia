@@ -187,8 +187,14 @@
         </section>
     {% else %}
         <article class="card">
-            <h3>No questions yet</h3>
-            <p>Generate and export questions to see the test player here.</p>
+            {% if section.practice_access_exhausted %}
+                <h3>Free practice complete</h3>
+                <p>You have completed all {{ section.practice_question_total }} free questions for this module. Upgrade to continue practising.</p>
+                <a class="button" href="{% url 'pages:pricing' %}">View plans</a>
+            {% else %}
+                <h3>No questions yet</h3>
+                <p>Generate and export questions to see the test player here.</p>
+            {% endif %}
         </article>
     {% endif %}
 </section>

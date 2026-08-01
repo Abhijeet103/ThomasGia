@@ -22,18 +22,18 @@ GA4_MEASUREMENT_ID_PATTERN = re.compile(r"^G-[A-Z0-9]+$")
 
 ASSESSMENT_SEO_METADATA = {
     ASSESSMENT_PREPGIA: {
-        "page_title": "Thomas GIA Practice Test: All 5 Sections | MindMetric",
+        "page_title": "Free Thomas GIA Practice Test & Questions | MindMetric",
         "meta_description": (
-            "Practice the Thomas International General Intelligence Assessment "
-            "with timed drills for all five GIA sections and a full mock test."
+            "Try a free Thomas GIA practice test with questions for all five sections "
+            "of the Thomas International General Intelligence Assessment (GIA)."
         ),
         "schema_name": "Thomas GIA Practice Test",
     },
     ASSESSMENT_CCAT: {
-        "page_title": "CCAT Practice Test & Sample Questions | MindMetric",
+        "page_title": "Free CCAT Practice Test & Aptitude Questions | MindMetric",
         "meta_description": (
-            "Prepare for the Criteria Cognitive Aptitude Test with CCAT numerical, "
-            "verbal and spatial reasoning drills plus a full mock test."
+            "Try free CCAT practice questions for the Criteria Cognitive Aptitude Test, "
+            "including numerical, verbal, logic and spatial reasoning drills."
         ),
         "schema_name": "CCAT Practice Test",
     },

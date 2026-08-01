@@ -19,7 +19,8 @@ from backend.apps.accounts.models import User, UserRole
 from backend.apps.accounts.emails import send_subscription_activated_email, send_subscription_canceled_email
 from backend.apps.tenants.utils import get_current_tenant
 
-from .models import BillingPlan, Subscription, SubscriptionStatus
+from .models import BillingPlan, BillingPlanCountryPrice, Subscription, SubscriptionStatus
+from .regions import normalize_country_code, price_override_codes
 
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,8 @@ class PlanDefinition:
     currency: str
     duration_label: str
     summary: str
+    country_code: str
+    pricing_region: str
 
 
 PLAN_ORDER = ("weekly", "monthly", "yearly")
@@ -67,26 +70,53 @@ def _safe_plan_rank(plan_code: str | None) -> int | None:
         return None
 
 
-def get_plan_catalog() -> list[PlanDefinition]:
-    return [
-        PlanDefinition(
-            code=plan.code,
-            title=plan.title,
-            price_display=plan.effective_price_display,
-            price_value=f"{plan.effective_price:.2f}",
-            regular_price_display=plan.price_display,
-            has_discount=plan.has_discount,
-            discount_percent=plan.discount_percent,
-            currency=plan.currency,
-            duration_label=plan.duration_label,
-            summary=plan.summary,
+def get_plan_catalog(country_code: str | None = None) -> list[PlanDefinition]:
+    plans = list(BillingPlan.objects.filter(is_active=True))
+    normalized_country = normalize_country_code(country_code) or "US"
+    override_codes = price_override_codes(normalized_country)
+    overrides_by_plan: dict[int, BillingPlanCountryPrice] = {}
+    if override_codes:
+        overrides = BillingPlanCountryPrice.objects.filter(
+            plan_id__in=[plan.id for plan in plans],
+            country_code__in=override_codes,
+            is_active=True,
         )
-        for plan in BillingPlan.objects.filter(is_active=True)
-    ]
+        code_priority = {code: index for index, code in enumerate(override_codes)}
+        for override in sorted(
+            overrides,
+            key=lambda item: code_priority.get(item.country_code, len(code_priority)),
+        ):
+            overrides_by_plan.setdefault(override.plan_id, override)
+
+    catalog = []
+    for plan in plans:
+        price_source = overrides_by_plan.get(plan.id, plan)
+        pricing_region = (
+            price_source.country_code
+            if isinstance(price_source, BillingPlanCountryPrice)
+            else "US"
+        )
+        catalog.append(
+            PlanDefinition(
+                code=plan.code,
+                title=plan.title,
+                price_display=price_source.effective_price_display,
+                price_value=f"{price_source.effective_price:.2f}",
+                regular_price_display=price_source.price_display,
+                has_discount=price_source.has_discount,
+                discount_percent=price_source.discount_percent,
+                currency=price_source.currency,
+                duration_label=plan.duration_label,
+                summary=plan.summary,
+                country_code=normalized_country,
+                pricing_region=pricing_region,
+            )
+        )
+    return catalog
 
 
-def get_plan_definition(plan_code: str) -> PlanDefinition:
-    plans = {plan.code: plan for plan in get_plan_catalog()}
+def get_plan_definition(plan_code: str, country_code: str | None = None) -> PlanDefinition:
+    plans = {plan.code: plan for plan in get_plan_catalog(country_code)}
     try:
         return plans[plan_code]
     except KeyError as exc:
@@ -278,12 +308,22 @@ def _activate_subscription(
     return subscription
 
 
-def _paypal_custom_id(user: User, plan_code: str) -> str:
+def _paypal_custom_id(
+    user: User,
+    plan_code: str,
+    *,
+    country_code: str = "US",
+    pricing_region: str = "US",
+    currency: str = "USD",
+) -> str:
     return json.dumps(
         {
             "user_id": user.id,
             "plan_code": plan_code,
             "tenant_id": user.tenant_id or "",
+            "country_code": country_code,
+            "pricing_region": pricing_region,
+            "currency": currency,
         },
         separators=(",", ":"),
     )
@@ -301,12 +341,16 @@ def _parse_paypal_custom_id(value: str | None) -> dict[str, str]:
     return parsed
 
 
-def build_plan_cards(user: User | None, active_subscription: Subscription | None) -> list[dict[str, object]]:
+def build_plan_cards(
+    user: User | None,
+    active_subscription: Subscription | None,
+    country_code: str | None = None,
+) -> list[dict[str, object]]:
     current_plan_code = active_subscription.plan_code if active_subscription else None
     has_active_subscription = bool(active_subscription and active_subscription.status == SubscriptionStatus.ACTIVE)
     current_plan_rank = _safe_plan_rank(current_plan_code)
     cards: list[dict[str, object]] = []
-    for plan in get_plan_catalog():
+    for plan in get_plan_catalog(country_code):
         is_current = plan.code == current_plan_code
         plan_rank = _plan_rank(plan.code)
         show_action = True
@@ -332,6 +376,9 @@ def build_plan_cards(user: User | None, active_subscription: Subscription | None
                 "discount_percent": plan.discount_percent,
                 "duration_label": plan.duration_label,
                 "summary": plan.summary,
+                "currency": plan.currency,
+                "country_code": plan.country_code,
+                "pricing_region": plan.pricing_region,
                 "is_current": is_current,
                 "button_label": button_label,
                 "is_disabled": is_current,
@@ -343,13 +390,19 @@ def build_plan_cards(user: User | None, active_subscription: Subscription | None
     return cards
 
 
-def create_checkout_session(user: User, plan_code: str, base_url: str | None = None) -> str:
+def create_checkout_session(
+    user: User,
+    plan_code: str,
+    base_url: str | None = None,
+    *,
+    country_code: str | None = None,
+) -> str:
     if not user.is_authenticated:
         raise BillingConfigurationError("Authentication required to start checkout.")
     if not stripe_is_configured():
         raise BillingConfigurationError("Stripe is not configured yet.")
 
-    plan = get_plan_definition(plan_code)
+    plan = get_plan_definition(plan_code, country_code)
     stripe.api_key = settings.STRIPE_SECRET_KEY
     success_url = _build_absolute_url(f"{reverse('pages:subscription')}?checkout=processing", base_url=base_url)
     cancel_url = _build_absolute_url(f"{reverse('pages:subscription')}?checkout=cancelled", base_url=base_url)
@@ -373,8 +426,24 @@ def create_checkout_session(user: User, plan_code: str, base_url: str | None = N
         cancel_url=cancel_url,
         client_reference_id=str(user.id),
         customer_email=user.email,
-        metadata={"user_id": str(user.id), "plan_code": plan.code, "tenant_id": str(user.tenant_id or "")},
-        payment_intent_data={"metadata": {"user_id": str(user.id), "plan_code": plan.code, "tenant_id": str(user.tenant_id or "")}},
+        metadata={
+            "user_id": str(user.id),
+            "plan_code": plan.code,
+            "tenant_id": str(user.tenant_id or ""),
+            "country_code": plan.country_code,
+            "pricing_region": plan.pricing_region,
+            "currency": plan.currency,
+        },
+        payment_intent_data={
+            "metadata": {
+                "user_id": str(user.id),
+                "plan_code": plan.code,
+                "tenant_id": str(user.tenant_id or ""),
+                "country_code": plan.country_code,
+                "pricing_region": plan.pricing_region,
+                "currency": plan.currency,
+            }
+        },
     )
 
     logger.info(
@@ -386,13 +455,19 @@ def create_checkout_session(user: User, plan_code: str, base_url: str | None = N
     return checkout_session.url
 
 
-def create_paypal_order(user: User, plan_code: str, base_url: str | None = None) -> str:
+def create_paypal_order(
+    user: User,
+    plan_code: str,
+    base_url: str | None = None,
+    *,
+    country_code: str | None = None,
+) -> str:
     if not user.is_authenticated:
         raise BillingConfigurationError("Authentication required to start checkout.")
     if not paypal_is_configured():
         raise BillingConfigurationError("PayPal is not configured yet.")
 
-    plan = get_plan_definition(plan_code)
+    plan = get_plan_definition(plan_code, country_code)
     return_url = _build_absolute_url(reverse("billing-paypal-return"), base_url=base_url)
     cancel_url = _build_absolute_url(f"{reverse('pages:subscription')}?checkout=cancelled", base_url=base_url)
 
@@ -408,7 +483,13 @@ def create_paypal_order(user: User, plan_code: str, base_url: str | None = None)
                         "value": plan.price_value,
                     },
                     "description": f"MindMetric {plan.title} access",
-                    "custom_id": _paypal_custom_id(user, plan.code),
+                    "custom_id": _paypal_custom_id(
+                        user,
+                        plan.code,
+                        country_code=plan.country_code,
+                        pricing_region=plan.pricing_region,
+                        currency=plan.currency,
+                    ),
                 }
             ],
             "payment_source": {

@@ -5,6 +5,8 @@ from django.contrib.auth.signals import user_logged_in
 from django.dispatch import receiver
 from django.utils import timezone
 
+from backend.apps.tenants.auth import bind_session_to_tenant
+
 from .emails import queue_welcome_email
 
 
@@ -23,4 +25,5 @@ def handle_user_signed_up(request, user, **kwargs):
 
 @receiver(user_logged_in)
 def handle_user_logged_in(sender, request, user, **kwargs):
+    bind_session_to_tenant(request)
     _queue_welcome_email_once(user)

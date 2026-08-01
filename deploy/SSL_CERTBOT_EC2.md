@@ -20,6 +20,21 @@ Before deploying, make sure every listed hostname resolves to the EC2 Elastic
 IP. A wildcard DNS `A` record pointing `*.mindmetric.store` to EC2 can handle
 this routing without adding a separate DNS record for each tenant.
 
+## Google OAuth for tenant domains
+
+Authentication sessions are host-only. Each tenant that offers Google login
+must therefore be registered explicitly in the Google Cloud OAuth web client.
+Google does not accept wildcard redirect URIs.
+
+For a tenant such as `demo.mindmetric.store`, add:
+
+- Authorized JavaScript origin: `https://demo.mindmetric.store`
+- Authorized redirect URI: `https://demo.mindmetric.store/accounts/google/login/callback/`
+
+Add these entries before enabling the tenant for users. The tenant must also be
+present in `deploy/tenant_domains.txt`, resolve in DNS, and be covered by the
+active TLS certificate.
+
 ## Initial Server Setup
 
 ```bash

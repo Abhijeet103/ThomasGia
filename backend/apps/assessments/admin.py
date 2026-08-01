@@ -17,6 +17,7 @@ from .models import (
     AttemptAnswer,
     AttemptSection,
     PracticeTrackVisibility,
+    FreeTierModuleLimit,
     SectionProgress,
     WordMeaningItem,
 )
@@ -122,6 +123,21 @@ class AssessmentTrackWaitlistEntryAdmin(TenantScopedAdminMixin, admin.ModelAdmin
     list_display = ("email", "assessment_type", "tenant", "user", "notified_at", "created_at")
     list_filter = ("assessment_type", "notified_at", "tenant")
     search_fields = ("email", "user__email", "assessment_type")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(FreeTierModuleLimit)
+class FreeTierModuleLimitAdmin(TenantScopedAdminMixin, admin.ModelAdmin):
+    list_display = (
+        "tenant",
+        "assessment_type",
+        "section_type",
+        "practice_question_limit",
+        "test_attempt_limit",
+        "updated_at",
+    )
+    list_filter = ("tenant", "assessment_type", "section_type")
+    search_fields = ("tenant__name", "tenant__slug", "assessment_type", "section_type")
     readonly_fields = ("created_at", "updated_at")
 
 

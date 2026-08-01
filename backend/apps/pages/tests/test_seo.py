@@ -177,11 +177,12 @@ class SearchMetadataTests(SimpleTestCase):
     def test_thomas_gia_assessment_targets_full_name(self):
         metadata = assessment_seo_metadata("prepgia", "Thomas GIA")
 
-        self.assertIn("Thomas GIA Practice Test", metadata["page_title"])
+        self.assertIn("Free Thomas GIA Practice Test", metadata["page_title"])
         self.assertIn(
             "Thomas International General Intelligence Assessment",
             metadata["meta_description"],
         )
+        self.assertIn("free", metadata["meta_description"].lower())
 
     def test_thomas_gia_module_title_is_assessment_specific(self):
         metadata = module_seo_metadata(
@@ -197,8 +198,9 @@ class SearchMetadataTests(SimpleTestCase):
     def test_ccat_uses_expanded_assessment_name(self):
         metadata = assessment_seo_metadata("ccat", "CCAT")
 
-        self.assertIn("CCAT Practice Test", metadata["page_title"])
+        self.assertIn("Free CCAT Practice Test", metadata["page_title"])
         self.assertIn(
             "Criteria Cognitive Aptitude Test",
             metadata["meta_description"],
         )
+        self.assertIn("aptitude", metadata["page_title"].lower())

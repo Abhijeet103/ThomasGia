@@ -13,7 +13,7 @@ ASSESSMENT_CONFIG = {
         "slug": ASSESSMENT_PREPGIA,
         "title": "Thomas GIA",
         "eyebrow": "Thomas GIA practice platform",
-        "description": "Thomas GIA-style speed practice with full tests and section-wise drills.",
+        "description": "Thomas International GIA cognitive ability practice with timed tests and section-wise drills.",
         "full_test_title": "Full test",
         "full_test_description": "All five sections in one flow, designed to feel very close to the real GIA.",
         "full_test_meta_tail": "",
@@ -112,7 +112,7 @@ ASSESSMENT_CONFIG = {
         "slug": ASSESSMENT_CCAT,
         "title": "CCAT",
         "eyebrow": "CCAT aptitude practice platform",
-        "description": "Numerical, verbal, and abstract aptitude practice with module drills and full tests.",
+        "description": "Criteria Cognitive Aptitude Test (CCAT) practice for numerical, verbal, logic, and spatial reasoning.",
         "full_test_title": "Full test",
         "full_test_description": "Three CCAT-style modules in one focused run: math, verbal, and abstract reasoning.",
         "full_test_meta_tail": "mixed aptitude practice",
@@ -179,7 +179,7 @@ PRACTICE_TRACK_LIBRARY = {
     ASSESSMENT_PREPGIA: {
         "key": ASSESSMENT_PREPGIA,
         "title": "Thomas GIA",
-        "description": "Thomas GIA-style speed practice with full tests and section-wise drills.",
+        "description": "Thomas International GIA cognitive ability practice with timed tests and section-wise drills.",
         "module_count": len(ASSESSMENT_CONFIG[ASSESSMENT_PREPGIA]["modules"]),
         "trust_line": "Used by 30,000+ employers across the UK and Europe",
         "available_languages": ["English", "Deutsch — kommt bald"],
@@ -189,7 +189,7 @@ PRACTICE_TRACK_LIBRARY = {
     ASSESSMENT_CCAT: {
         "key": ASSESSMENT_CCAT,
         "title": "CCAT",
-        "description": "Numerical, verbal, and abstract aptitude practice with module drills and full tests.",
+        "description": "Criteria Cognitive Aptitude Test (CCAT) practice for numerical, verbal, logic, and spatial reasoning.",
         "module_count": len(ASSESSMENT_CONFIG[ASSESSMENT_CCAT]["modules"]),
         "trust_line": "Taken 10M+ times at 4,500+ US employers",
         "available_languages": ["English"],
@@ -199,7 +199,7 @@ PRACTICE_TRACK_LIBRARY = {
     ASSESSMENT_WATSON_GLASER: {
         "key": ASSESSMENT_WATSON_GLASER,
         "title": "Watson-Glaser",
-        "description": "Critical reasoning practice covering inference, assumptions, and argument evaluation.",
+        "description": "Watson-Glaser Critical Thinking Appraisal (WGCTA) practice for inference, assumptions, deductions, and arguments.",
         "module_count": 4,
         "trust_line": "In testing with a small group right now",
         "available_languages": ["English"],
@@ -209,7 +209,7 @@ PRACTICE_TRACK_LIBRARY = {
     ASSESSMENT_SHL_VERIFY: {
         "key": ASSESSMENT_SHL_VERIFY,
         "title": "SHL Verify",
-        "description": "Numerical, verbal, and inductive reasoning practice in the SHL question style.",
+        "description": "SHL Verify aptitude test practice for numerical, verbal, inductive, and deductive reasoning assessments.",
         "module_count": 4,
         "trust_line": "In testing with a small group right now",
         "available_languages": ["English"],

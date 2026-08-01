@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -81,6 +82,49 @@ class AssessmentTrackWaitlistEntry(models.Model):
 
     def __str__(self) -> str:
         return f"{self.email} waiting for {self.assessment_type}"
+
+
+class FreeTierModuleLimit(models.Model):
+    tenant = models.ForeignKey(
+        "tenants.Tenant",
+        on_delete=models.PROTECT,
+        related_name="free_tier_module_limits",
+    )
+    assessment_type = models.CharField(max_length=64)
+    section_type = models.CharField(max_length=32, choices=SectionType.choices)
+    practice_question_limit = models.PositiveIntegerField(default=10)
+    test_attempt_limit = models.PositiveIntegerField(default=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("tenant", "assessment_type", "section_type"),
+                name="unique_free_tier_module_limit",
+            ),
+        ]
+        ordering = ("tenant", "assessment_type", "section_type")
+
+    def clean(self):
+        section_assessments = {
+            SectionType.REASONING: "prepgia",
+            SectionType.PERCEPTUAL_SPEED: "prepgia",
+            SectionType.NUMBER_SPEED_ACCURACY: "prepgia",
+            SectionType.WORD_MEANING: "prepgia",
+            SectionType.SPATIAL_VISUALIZATION: "prepgia",
+            SectionType.CCAT_NUMERICAL: "ccat",
+            SectionType.CCAT_VERBAL: "ccat",
+            SectionType.CCAT_SPATIAL: "ccat",
+        }
+        expected_assessment = section_assessments.get(self.section_type)
+        if expected_assessment and self.assessment_type != expected_assessment:
+            raise ValidationError(
+                {"assessment_type": f"{self.get_section_type_display()} belongs to {expected_assessment}."}
+            )
+
+    def __str__(self) -> str:
+        return f"{self.tenant}: {self.get_section_type_display()} free-tier limits"
 
 
 class Attempt(models.Model):

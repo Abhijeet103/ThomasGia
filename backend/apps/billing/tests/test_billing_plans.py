@@ -7,7 +7,8 @@ from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from backend.apps.billing.models import BillingPlan
+from backend.apps.billing.models import BillingPlan, BillingPlanCountryPrice
+from backend.apps.billing.regions import get_request_country_code, pricing_region_for_country
 from backend.apps.billing.services import (
     build_plan_cards,
     create_checkout_session,
@@ -20,6 +21,81 @@ User = get_user_model()
 
 
 class BillingPlanTests(TestCase):
+    def test_regional_price_overrides_global_plan_price(self):
+        regional_price = BillingPlanCountryPrice.objects.get(
+            plan__code="weekly",
+            country_code="IN",
+        )
+        regional_price.price = Decimal("749.00")
+        regional_price.sale_price = Decimal("599.00")
+        regional_price.save(update_fields=("price", "sale_price", "updated_at"))
+
+        definition = get_plan_definition("weekly", country_code="IN")
+
+        self.assertEqual(definition.currency, "INR")
+        self.assertEqual(definition.price_display, "₹599.00")
+        self.assertEqual(definition.regular_price_display, "₹749.00")
+        self.assertEqual(definition.country_code, "IN")
+        self.assertEqual(definition.pricing_region, "IN")
+
+    def test_exact_country_override_takes_priority_over_europe_price(self):
+        plan = BillingPlan.objects.get(code="monthly")
+        BillingPlanCountryPrice.objects.create(
+            plan=plan,
+            country_code="DE",
+            currency="EUR",
+            price=Decimal("17.25"),
+        )
+
+        definition = get_plan_definition("monthly", country_code="DE")
+
+        self.assertEqual(definition.price_display, "€17.25")
+        self.assertEqual(definition.pricing_region, "DE")
+
+    def test_rest_of_world_uses_global_usd_plan(self):
+        plan = BillingPlan.objects.get(code="weekly")
+        plan.price = Decimal("11.25")
+        plan.save(update_fields=("price", "updated_at"))
+
+        definition = get_plan_definition("weekly", country_code="AU")
+
+        self.assertEqual(definition.currency, "USD")
+        self.assertEqual(definition.price_display, "$11.25")
+        self.assertEqual(definition.pricing_region, "US")
+
+    @override_settings(BILLING_TRUST_PROXY_COUNTRY_HEADERS=True)
+    def test_pricing_page_uses_proxy_country_header(self):
+        regional_price = BillingPlanCountryPrice.objects.get(
+            plan__code="weekly",
+            country_code="GB",
+        )
+        regional_price.price = Decimal("6.75")
+        regional_price.save(update_fields=("price", "updated_at"))
+
+        response = self.client.get(
+            "/pricing/",
+            HTTP_HOST="mindmetric.store",
+            HTTP_CF_IPCOUNTRY="GB",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "£6.75")
+        self.assertEqual(self.client.session["billing_country_code"], "GB")
+
+    @override_settings(BILLING_TRUST_PROXY_COUNTRY_HEADERS=True)
+    def test_country_detection_is_saved_in_session(self):
+        response = self.client.get(
+            "/pricing/",
+            HTTP_HOST="mindmetric.store",
+            HTTP_CLOUDFRONT_VIEWER_COUNTRY="IN",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        request = response.wsgi_request
+        self.assertEqual(get_request_country_code(request), "IN")
+        self.assertEqual(pricing_region_for_country("FR"), "EU")
+        self.assertEqual(pricing_region_for_country("US"), "US")
+
     def test_admin_price_is_used_by_plan_catalog(self):
         plan = BillingPlan.objects.get(code="weekly")
         plan.price = "14.50"
@@ -124,6 +200,41 @@ class BillingPlanTests(TestCase):
 
         line_item = create_session.call_args.kwargs["line_items"][0]
         self.assertEqual(line_item["price_data"]["unit_amount"], 1225)
+
+    @override_settings(
+        STRIPE_SECRET_KEY="sk_test",
+        STRIPE_WEBHOOK_SECRET="whsec_test",
+    )
+    @patch("backend.apps.billing.services.stripe.checkout.Session.create")
+    def test_stripe_checkout_charges_regional_currency_and_price(self, create_session):
+        regional_price = BillingPlanCountryPrice.objects.get(
+            plan__code="monthly",
+            country_code="GB",
+        )
+        regional_price.price = Decimal("15.50")
+        regional_price.save(update_fields=("price", "updated_at"))
+        user = User.objects.create_user(
+            email="regional-stripe@example.com",
+            password="secret",
+        )
+        create_session.return_value = SimpleNamespace(
+            id="cs_regional",
+            url="https://checkout.stripe.test/regional",
+        )
+
+        create_checkout_session(
+            user,
+            "monthly",
+            base_url="https://mindmetric.store",
+            country_code="GB",
+        )
+
+        checkout_payload = create_session.call_args.kwargs
+        price_data = checkout_payload["line_items"][0]["price_data"]
+        self.assertEqual(price_data["unit_amount"], 1550)
+        self.assertEqual(price_data["currency"], "gbp")
+        self.assertEqual(checkout_payload["metadata"]["country_code"], "GB")
+        self.assertEqual(checkout_payload["metadata"]["pricing_region"], "GB")
 
     @override_settings(
         PAYPAL_CLIENT_ID="paypal-client",

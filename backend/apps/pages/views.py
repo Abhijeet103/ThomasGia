@@ -14,7 +14,7 @@ from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.generic import TemplateView
-from django.db.models import Prefetch
+from django.db.models import Count, Prefetch
 from django.views import View
 from django.views.generic.edit import FormView
 
@@ -24,6 +24,7 @@ from backend.apps.billing.services import (
     stripe_is_configured,
     sync_user_subscription_access,
 )
+from backend.apps.billing.regions import get_request_country_code
 from backend.apps.tenants.utils import get_default_tenant
 from backend.apps.tenants.services import is_institution_tenant, tenant_allows_assessment
 from backend.apps.assessments.config import (
@@ -52,7 +53,9 @@ from backend.apps.assessments.services import (
     expire_stale_attempts,
     get_or_create_full_test_attempt,
     get_or_create_section_attempt,
+    get_module_free_tier_limits,
     get_section_test_previews,
+    has_unlimited_module_access,
     serialize_full_test_attempt_for_frontend,
 )
 from .emails import send_sale_inquiry_notification
@@ -131,8 +134,17 @@ def _contact_form_initial(request, source_page: str) -> dict[str, str]:
     return initial
 
 
-def _visible_frontend_plans(user, active_subscription):
-    return [plan for plan in build_plan_cards(user, active_subscription) if plan["code"] != "yearly"]
+def _visible_frontend_plans(request, active_subscription):
+    country_code = get_request_country_code(request)
+    return [
+        plan
+        for plan in build_plan_cards(
+            request.user,
+            active_subscription,
+            country_code=country_code,
+        )
+        if plan["code"] != "yearly"
+    ]
 
 
 def _contact_sales_open_url(request) -> str:
@@ -317,10 +329,10 @@ class HomePageView(TemplateView):
         all_questions = get_questions()
         context.update(
             {
-                "page_title": "MindMetric: Thomas GIA, CCAT & Psychometric Test Practice",
+                "page_title": "Free Aptitude & Psychometric Practice Tests | MindMetric",
                 "meta_description": (
-                    "Prepare for the Thomas International GIA and Criteria CCAT with "
-                    "timed module drills, full mock tests, feedback and progress tracking."
+                    "Practise free aptitude and psychometric tests for Thomas GIA and "
+                    "Criteria CCAT, and explore upcoming SHL and Watson-Glaser preparation."
                 ),
                 "question_count": len(all_questions),
                 "sections": _section_cards(ASSESSMENT_PREPGIA),
@@ -348,7 +360,7 @@ class PricingPageView(TemplateView):
                     "test practice, including timed drills and full mock tests."
                 ),
                 "active_subscription": active_subscription,
-                "plans": _visible_frontend_plans(self.request.user, active_subscription),
+                "plans": _visible_frontend_plans(self.request, active_subscription),
                 "paypal_enabled": paypal_is_configured(),
                 "stripe_enabled": stripe_is_configured(),
                 "contact_form": SaleInquiryForm(initial={**_contact_form_initial(self.request, "pricing"), "next": self.request.path}),
@@ -375,7 +387,7 @@ class SubscriptionPageView(LoginRequiredMixin, TemplateView):
         is_tenant_managed = self.request.effective_access_tenant_managed
         visible_plans = (
             [] if is_tenant_managed
-            else _visible_frontend_plans(self.request.user, active_subscription)
+            else _visible_frontend_plans(self.request, active_subscription)
         )
         extension_cards = []
         for plan in visible_plans:
@@ -475,10 +487,10 @@ class PracticePageView(TemplateView):
         context = super().get_context_data(**kwargs)
         context.update(
             {
-                "page_title": "Psychometric Practice Tests: Thomas GIA & CCAT | MindMetric",
+                "page_title": "Free Aptitude & Psychometric Practice Tests | MindMetric",
                 "meta_description": (
-                    "Choose Thomas GIA or Criteria CCAT practice tests with timed "
-                    "module drills, sample questions, full mocks and progress tracking."
+                    "Choose free Thomas GIA and CCAT practice tests, sample aptitude "
+                    "questions, and upcoming SHL Verify and Watson-Glaser preparation."
                 ),
                 "assessments": _build_practice_assessment_cards(self.request),
                 "suggest_test_form": TestSuggestionForm(
@@ -571,7 +583,7 @@ class AssessmentPracticePageView(TemplateView):
     template_name = "pages/practice.html"
 
     def get_context_data(self, **kwargs):
-        from backend.apps.assessments.services import FREE_FULL_TEST_LIMIT, FREE_SECTION_TEST_LIMIT
+        from backend.apps.assessments.services import FREE_FULL_TEST_LIMIT
         from backend.apps.accounts.models import UserRole
         from backend.apps.assessments.models import Attempt, AttemptMode
         context = super().get_context_data(**kwargs)
@@ -591,7 +603,6 @@ class AssessmentPracticePageView(TemplateView):
             or is_institution_tenant(tenant)
         ):
             full_test_attempts_left = None
-            module_test_attempts_left = None
         elif user.is_authenticated:
             full_used = Attempt.objects.filter(
                 user=user,
@@ -599,17 +610,9 @@ class AssessmentPracticePageView(TemplateView):
                 mode=AttemptMode.FULL_TEST,
                 assessment_type=assessment_type,
             ).count()
-            module_used = Attempt.objects.filter(
-                user=user,
-                tenant=tenant,
-                mode=AttemptMode.SECTION,
-                assessment_type=assessment_type,
-            ).count()
             full_test_attempts_left = max(0, FREE_FULL_TEST_LIMIT - full_used)
-            module_test_attempts_left = max(0, FREE_SECTION_TEST_LIMIT - module_used)
         else:
             full_test_attempts_left = FREE_FULL_TEST_LIMIT
-            module_test_attempts_left = FREE_SECTION_TEST_LIMIT
         context.update(
             {
                 "page_title": seo_metadata["page_title"],
@@ -620,7 +623,6 @@ class AssessmentPracticePageView(TemplateView):
                 "sections_started": sum(1 for section in sections if section["status_class"] != "status-not-started"),
                 "sections_total": len(sections),
                 "full_test_attempts_left": full_test_attempts_left,
-                "module_test_attempts_left": module_test_attempts_left,
             }
         )
         return context
@@ -730,7 +732,16 @@ class SectionDetailPageView(TemplateView):
             meta["title"],
             meta["description"],
         )
-        practice_question_total = max(1, get_time_limit_seconds(section_type) // 2)
+        limits = get_module_free_tier_limits(tenant, assessment_type, section_type)
+        unlimited_access = (
+            self.request.user.is_authenticated
+            and has_unlimited_module_access(self.request.user, tenant)
+        )
+        practice_question_total = (
+            SECTION_PRACTICE_PAID_COUNT
+            if unlimited_access
+            else limits.practice_question_limit
+        )
         practice_questions_solved = 0
         if self.request.user.is_authenticated:
             progress = SectionProgress.objects.filter(
@@ -741,8 +752,18 @@ class SectionDetailPageView(TemplateView):
             ).first()
             if progress is not None:
                 practice_questions_solved = progress.practice_questions_solved
-        practice_progress_percent = min(round((practice_questions_solved / practice_question_total) * 100), 100) if practice_question_total else 0
-        practice_previews = _build_section_questions(section_type, "practice", user=self.request.user)
+        practice_progress_percent = min(round((practice_questions_solved / practice_question_total) * 100), 100) if practice_question_total else 100
+        practice_remaining = (
+            practice_question_total
+            if not self.request.user.is_authenticated or unlimited_access
+            else max(0, practice_question_total - practice_questions_solved)
+        )
+        practice_previews = _build_section_questions(
+            section_type,
+            "practice",
+            user=self.request.user,
+            question_count=practice_remaining,
+        )
         context.update(
             {
                 "page_title": seo_metadata["page_title"],
@@ -762,6 +783,8 @@ class SectionDetailPageView(TemplateView):
                     "practice_questions_solved": practice_questions_solved,
                     "practice_progress_percent": practice_progress_percent,
                     "practice_previews": practice_previews,
+                    "practice_access_exhausted": not unlimited_access and practice_remaining == 0,
+                    "free_test_attempt_limit": limits.test_attempt_limit,
                     "mode": mode,
                     "test_setup_url": reverse("pages:assessment-section-test-setup", args=[assessment_type, section_type]),
                 },
@@ -826,7 +849,14 @@ class LoginPageView(View):
         return render(request, self.template_name, self._context(request, form))
 
     def _redirect_url(self, request):
-        return request.GET.get("next") or request.POST.get("next") or settings.LOGIN_REDIRECT_URL
+        redirect_url = request.GET.get("next") or request.POST.get("next")
+        if redirect_url and url_has_allowed_host_and_scheme(
+            redirect_url,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        ):
+            return redirect_url
+        return settings.LOGIN_REDIRECT_URL
 
     def _context(self, request, form):
         return {
@@ -961,6 +991,7 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
         for item in SectionProgress.objects.filter(user=self.request.user, tenant=tenant):
             progress_rows.setdefault(item.assessment_type, []).append(item)
         track_by_key = {track["key"]: track for track in visible_dashboard_tracks}
+        unlimited_module_access = has_unlimited_module_access(self.request.user, tenant)
         for assessment_key in visible_dashboard_assessment_keys:
             config = get_assessment_config(assessment_key)
             module_count = len(config["modules"])
@@ -973,8 +1004,13 @@ class DashboardPageView(LoginRequiredMixin, TemplateView):
                 row = assessment_progress.get(module["key"])
                 practice_solved = row.practice_questions_solved if row else 0
                 tests_taken = row.tests_taken if row else 0
-                practice_goal = SECTION_PRACTICE_GOAL
-                test_goal = 10
+                limits = get_module_free_tier_limits(tenant, assessment_key, module["key"])
+                practice_goal = (
+                    SECTION_PRACTICE_GOAL
+                    if unlimited_module_access
+                    else limits.practice_question_limit
+                )
+                test_goal = 10 if unlimited_module_access else limits.test_attempt_limit
                 practice_ratio = min(practice_solved / practice_goal, 1) if practice_goal else 0
                 test_ratio = min(tests_taken / test_goal, 1) if test_goal else 0
                 module_progress_percent = round((practice_ratio * 0.5 + test_ratio * 0.5) * 100)
@@ -1118,6 +1154,7 @@ def _practice_section_cards(request, assessment_type: str):
     tenant = _current_tenant(request)
     progress_by_section = {}
     active_attempts = {}
+    test_attempt_counts = {}
     if request.user.is_authenticated:
         progress_by_section = {
             item.section_type: item
@@ -1142,6 +1179,18 @@ def _practice_section_cards(request, assessment_type: str):
             first_section = next(iter(attempt.sections.all()), None)
             if first_section and first_section.section_type not in active_attempts:
                 active_attempts[first_section.section_type] = attempt
+        test_attempt_counts = {
+            row["sections__section_type"]: row["total"]
+            for row in request.user.attempts.filter(
+                tenant=tenant,
+                assessment_type=assessment_type,
+                mode=AttemptMode.SECTION,
+            )
+            .values("sections__section_type")
+            .annotate(total=Count("id", distinct=True))
+        }
+
+    unlimited_access = request.user.is_authenticated and has_unlimited_module_access(request.user, tenant)
 
     cards = []
     for index, key in enumerate(get_assessment_module_keys(assessment_type)):
@@ -1150,8 +1199,9 @@ def _practice_section_cards(request, assessment_type: str):
         practice_solved = progress.practice_questions_solved if progress else 0
         tests_taken = progress.tests_taken if progress else 0
         active_attempt = active_attempts.get(key)
-        practice_goal = SECTION_PRACTICE_GOAL
-        test_goal = 10
+        limits = get_module_free_tier_limits(tenant, assessment_type, key)
+        practice_goal = SECTION_PRACTICE_GOAL if unlimited_access else limits.practice_question_limit
+        test_goal = 10 if unlimited_access else limits.test_attempt_limit
         practice_ratio = min(practice_solved / practice_goal, 1) if practice_goal else 0
         test_ratio = min(tests_taken / test_goal, 1) if test_goal else 0
         progress_percent = round((practice_ratio * 0.5 + test_ratio * 0.5) * 100)
@@ -1174,7 +1224,14 @@ def _practice_section_cards(request, assessment_type: str):
                 "key": key,
                 "title": meta["title"],
                 "description": meta["description"],
-                "question_count": max(1, get_time_limit_seconds(key) // 2),
+                "question_count": limits.practice_question_limit,
+                "free_practice_question_limit": limits.practice_question_limit,
+                "free_test_attempt_limit": limits.test_attempt_limit,
+                "free_test_attempts_left": (
+                    None
+                    if unlimited_access
+                    else max(0, limits.test_attempt_limit - test_attempt_counts.get(key, 0))
+                ),
                 "duration_minutes": max(1, get_time_limit_seconds(key) // 60),
                 "practice_solved": practice_solved,
                 "tests_taken": tests_taken,
@@ -1190,9 +1247,11 @@ def _practice_section_cards(request, assessment_type: str):
     return cards
 
 
-def _build_section_questions(section_type: str, mode: str, user=None) -> list[dict]:
+def _build_section_questions(section_type: str, mode: str, user=None, question_count: int | None = None) -> list[dict]:
     difficulty = "easy" if mode == "practice" else "medium"
-    if mode == "practice":
+    if question_count is not None:
+        question_count = max(0, question_count)
+    elif mode == "practice":
         question_count = max(1, get_time_limit_seconds(section_type) // 2)
     else:
         question_count = get_time_limit_seconds(section_type)

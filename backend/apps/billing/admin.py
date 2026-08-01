@@ -8,12 +8,13 @@ from django import forms
 from django.contrib import admin, messages
 from django.http import HttpResponse
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils import timezone
 
 from backend.apps.accounts.models import UserRole
 from backend.apps.tenants.admin_mixins import TenantScopedAdminMixin
 
-from .models import BillingPlan, Subscription, SubscriptionStatus
+from .models import BillingPlan, BillingPlanCountryPrice, Subscription, SubscriptionStatus
 from .services import calculate_expiry, sync_user_subscription_access
 
 
@@ -25,6 +26,13 @@ class BillingPlanDiscountForm(forms.Form):
         help_text="Enter a whole percentage from 1 to 90.",
         widget=forms.NumberInput(attrs={"min": 1, "max": 90, "step": 1}),
     )
+
+
+class BillingPlanCountryPriceInline(admin.TabularInline):
+    model = BillingPlanCountryPrice
+    fields = ("country_code", "currency", "price", "sale_price", "is_active")
+    extra = 0
+    show_change_link = True
 
 
 @admin.register(BillingPlan)
@@ -45,6 +53,7 @@ class BillingPlanAdmin(admin.ModelAdmin):
     ordering = ("display_order", "id")
     readonly_fields = ("code",)
     actions = ("apply_percentage_discount", "clear_sale_discount")
+    inlines = (BillingPlanCountryPriceInline,)
     fieldsets = (
         (
             "Plan",
@@ -116,6 +125,7 @@ class BillingPlanAdmin(admin.ModelAdmin):
                 "plans": queryset,
                 "form": form,
                 "action_name": "apply_percentage_discount",
+                "cancel_url": reverse("admin:billing_billingplan_changelist"),
             },
         )
 
@@ -127,6 +137,88 @@ class BillingPlanAdmin(admin.ModelAdmin):
         self.message_user(
             request,
             f"Cleared the sale discount from {updated} plan(s).",
+            level=messages.SUCCESS,
+        )
+
+
+@admin.register(BillingPlanCountryPrice)
+class BillingPlanCountryPriceAdmin(admin.ModelAdmin):
+    list_display = (
+        "plan",
+        "country_code",
+        "currency",
+        "price",
+        "sale_price",
+        "is_active",
+        "updated_at",
+    )
+    list_editable = ("price", "sale_price", "is_active")
+    list_filter = ("country_code", "currency", "is_active")
+    search_fields = ("plan__title", "plan__code", "country_code")
+    autocomplete_fields = ("plan",)
+    actions = ("apply_percentage_discount", "clear_sale_discount")
+
+    def has_module_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_view_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    def has_add_permission(self, request):
+        return bool(request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(request.user.is_superuser)
+
+    @admin.action(description="Apply percentage discount to selected regional prices")
+    def apply_percentage_discount(self, request, queryset):
+        if "confirm_discount" in request.POST:
+            form = BillingPlanDiscountForm(request.POST)
+            if form.is_valid():
+                percentage = form.cleaned_data["percentage"]
+                multiplier = (Decimal("100") - Decimal(percentage)) / Decimal("100")
+                updated = 0
+                for regional_price in queryset:
+                    regional_price.sale_price = (
+                        regional_price.price * multiplier
+                    ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                    regional_price.full_clean()
+                    regional_price.save(update_fields=("sale_price", "updated_at"))
+                    updated += 1
+                self.message_user(
+                    request,
+                    f"Applied a {percentage}% discount to {updated} regional price(s).",
+                    level=messages.SUCCESS,
+                )
+                return None
+        else:
+            form = BillingPlanDiscountForm()
+
+        return render(
+            request,
+            "admin/billing/billingplan/apply_discount.html",
+            {
+                **self.admin_site.each_context(request),
+                "opts": self.model._meta,
+                "title": "Apply regional percentage discount",
+                "plans": queryset,
+                "form": form,
+                "action_name": "apply_percentage_discount",
+                "cancel_url": reverse(
+                    "admin:billing_billingplancountryprice_changelist"
+                ),
+            },
+        )
+
+    @admin.action(description="Clear sale discount from selected regional prices")
+    def clear_sale_discount(self, request, queryset):
+        updated = queryset.exclude(sale_price__isnull=True).update(sale_price=None)
+        self.message_user(
+            request,
+            f"Cleared the sale discount from {updated} regional price(s).",
             level=messages.SUCCESS,
         )
 

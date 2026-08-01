@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import timedelta
+from urllib.parse import parse_qs, urlparse
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -196,10 +198,13 @@ class TenantAccessFlowTests(TestCase):
 
     def test_same_login_has_distinct_platform_and_institution_user_entries(self):
         tenant = self.create_institution(prefix="demo-profile")
-        self.client.force_login(self.user)
+        platform_client = Client()
+        tenant_client = Client()
+        platform_client.force_login(self.user)
+        tenant_client.force_login(self.user)
 
-        platform_response = self.client.get("/practice/", HTTP_HOST=self.platform.primary_domain)
-        tenant_response = self.client.get("/practice/", HTTP_HOST=tenant.primary_domain)
+        platform_response = platform_client.get("/practice/", HTTP_HOST=self.platform.primary_domain)
+        tenant_response = tenant_client.get("/practice/", HTTP_HOST=tenant.primary_domain)
 
         self.assertEqual(platform_response.status_code, 200)
         self.assertEqual(tenant_response.status_code, 200)
@@ -290,24 +295,73 @@ class TenantAccessFlowTests(TestCase):
         assessment_keys = [card["key"] for card in response.context["assessments"]]
         self.assertEqual(assessment_keys, ["prepgia", "ccat"])
 
-    def test_google_login_on_subdomain_hands_off_to_apex(self):
+    def test_google_login_on_subdomain_uses_the_tenant_callback(self):
         tenant = self.create_institution()
 
         response = self.client.get(
             "/accounts/google/login/?next=/dashboard/",
             HTTP_HOST=tenant.primary_domain,
+            secure=True,
         )
 
-        self.assertRedirects(
-            response,
-            "https://mindmetric.store/accounts/google/login/",
-            fetch_redirect_response=False,
-        )
+        oauth_url = urlparse(response.url)
+        self.assertEqual(oauth_url.netloc, "accounts.google.com")
         self.assertEqual(
-            self.client.session["tenant_oauth_return_url"],
-            f"http://{tenant.primary_domain}/dashboard/",
+            parse_qs(oauth_url.query)["redirect_uri"],
+            [f"https://{tenant.primary_domain}/accounts/google/login/callback/"],
         )
-        self.assertEqual(self.client.session["tenant_oauth_tenant_id"], tenant.id)
+        self.assertNotIn("tenant_oauth_return_url", self.client.session)
+        self.assertNotIn("tenant_oauth_tenant_id", self.client.session)
+
+    def test_authenticated_session_is_rejected_on_another_tenant(self):
+        tenant = self.create_institution(prefix="isolated")
+        self.client.force_login(self.user)
+
+        tenant_response = self.client.get("/practice/", HTTP_HOST=tenant.primary_domain)
+        platform_response = self.client.get("/practice/", HTTP_HOST=self.platform.primary_domain)
+
+        self.assertEqual(tenant_response.status_code, 200)
+        self.assertEqual(platform_response.status_code, 403)
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_independent_clients_can_login_on_separate_tenants(self):
+        tenant = self.create_institution(prefix="independent")
+        platform_client = Client()
+        tenant_client = Client()
+        platform_client.force_login(self.user)
+        tenant_client.force_login(self.user)
+
+        platform_response = platform_client.get(
+            "/practice/",
+            HTTP_HOST=self.platform.primary_domain,
+        )
+        tenant_response = tenant_client.get(
+            "/practice/",
+            HTTP_HOST=tenant.primary_domain,
+        )
+
+        self.assertEqual(platform_response.status_code, 200)
+        self.assertEqual(tenant_response.status_code, 200)
+        self.assertEqual(platform_client.session["_mindmetric_auth_tenant_id"], self.platform.id)
+        self.assertEqual(tenant_client.session["_mindmetric_auth_tenant_id"], tenant.id)
+
+    def test_email_login_binds_session_and_rejects_external_next_url(self):
+        tenant = self.create_institution(prefix="email-login")
+
+        response = self.client.post(
+            "/login/",
+            {
+                "login": self.user.email,
+                "password": "password",
+                "next": "https://mindmetric.store/dashboard/",
+            },
+            HTTP_HOST=tenant.primary_domain,
+            secure=True,
+        )
+
+        self.assertRedirects(response, "/", fetch_redirect_response=False)
+        self.assertEqual(self.client.session["_mindmetric_auth_tenant_id"], tenant.id)
+        self.assertEqual(response.cookies[settings.SESSION_COOKIE_NAME]["domain"], "")
 
     def test_institution_domain_is_derived_from_prefix(self):
         tenant = self.create_institution(prefix="academy")
