@@ -172,7 +172,9 @@ def seo_context(request):
             "url": f"{site_url}/",
             "logo": {
                 "@type": "ImageObject",
-                "url": f"{site_url}/static/apple-touch-icon.png",
+                "url": f"{site_url}/static/favicons/android-chrome-512x512.png",
+                "width": 512,
+                "height": 512,
             },
             "email": settings.CONTACT_EMAIL,
         },
@@ -271,7 +273,9 @@ def seo_context(request):
     return {
         "seo_canonical_url": canonical_url,
         "seo_robots_content": robots_content,
-        "seo_social_image_url": f"{site_url}/static/apple-touch-icon.png",
+        "seo_social_image_url": (
+            f"{site_url}/static/favicons/android-chrome-512x512.png"
+        ),
         "seo_social_image_alt": "MindMetric psychometric test practice platform",
         "seo_schema_json": json.dumps(
             {

@@ -101,8 +101,33 @@ class SeoContextTests(SimpleTestCase):
 
         self.assertEqual(
             context["seo_social_image_url"],
-            "https://mindmetric.store/static/apple-touch-icon.png",
+            (
+                "https://mindmetric.store/static/favicons/"
+                "android-chrome-512x512.png"
+            ),
         )
+
+    @override_settings(
+        STORAGES={
+            "default": {
+                "BACKEND": "django.core.files.storage.FileSystemStorage",
+            },
+            "staticfiles": {
+                "BACKEND": (
+                    "django.contrib.staticfiles.storage.StaticFilesStorage"
+                ),
+            },
+        }
+    )
+    def test_homepage_exposes_complete_favicon_family(self):
+        context = seo_context(self.make_request("/"))
+        html = render_to_string("base.html", context, request=self.make_request("/"))
+
+        self.assertIn('sizes="48x48"', html)
+        self.assertIn("favicons/favicon.svg", html)
+        self.assertIn("favicons/favicon.ico", html)
+        self.assertIn("favicons/apple-touch-icon.png", html)
+        self.assertIn("favicons/site.webmanifest", html)
 
     @override_settings(
         IS_PRODUCTION=True,
