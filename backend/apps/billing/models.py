@@ -150,6 +150,10 @@ class BillingPlanCountryPrice(models.Model):
                 condition=Q(sale_price__isnull=True) | Q(sale_price__lte=F("price")),
                 name="billing_country_sale_lte_price",
             ),
+            models.CheckConstraint(
+                condition=~Q(country_code="IN") | Q(currency=BillingCurrency.USD),
+                name="billing_india_price_uses_usd",
+            ),
         ]
 
     def clean(self):
@@ -159,6 +163,10 @@ class BillingPlanCountryPrice(models.Model):
         if len(self.country_code) != 2 or not self.country_code.isalpha():
             raise ValidationError(
                 {"country_code": "Enter a two-letter country code, or EU."}
+            )
+        if self.country_code == "IN" and self.currency != BillingCurrency.USD:
+            raise ValidationError(
+                {"currency": "Indian regional prices must use USD for PayPal compatibility."}
             )
         if self.sale_price is not None and self.sale_price > self.price:
             raise ValidationError(

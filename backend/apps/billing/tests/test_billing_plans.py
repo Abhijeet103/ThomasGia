@@ -21,22 +21,42 @@ User = get_user_model()
 
 
 class BillingPlanTests(TestCase):
-    def test_regional_price_overrides_global_plan_price(self):
+    def test_india_uses_independent_usd_price(self):
+        plan = BillingPlan.objects.get(code="weekly")
+        plan.price = Decimal("10.00")
+        plan.sale_price = None
+        plan.save(update_fields=("price", "sale_price", "updated_at"))
         regional_price = BillingPlanCountryPrice.objects.get(
             plan__code="weekly",
             country_code="IN",
         )
-        regional_price.price = Decimal("749.00")
-        regional_price.sale_price = Decimal("599.00")
-        regional_price.save(update_fields=("price", "sale_price", "updated_at"))
+        regional_price.currency = "USD"
+        regional_price.price = Decimal("5.00")
+        regional_price.sale_price = None
+        regional_price.save(
+            update_fields=("currency", "price", "sale_price", "updated_at")
+        )
 
         definition = get_plan_definition("weekly", country_code="IN")
 
-        self.assertEqual(definition.currency, "INR")
-        self.assertEqual(definition.price_display, "₹599.00")
-        self.assertEqual(definition.regular_price_display, "₹749.00")
+        self.assertEqual(definition.currency, "USD")
+        self.assertEqual(definition.price_display, "$5.00")
+        self.assertEqual(definition.regular_price_display, "$5.00")
         self.assertEqual(definition.country_code, "IN")
         self.assertEqual(definition.pricing_region, "IN")
+
+    def test_india_country_price_rejects_non_usd_currency(self):
+        regional_price = BillingPlanCountryPrice.objects.get(
+            plan__code="weekly",
+            country_code="IN",
+        )
+        regional_price.currency = "INR"
+
+        with self.assertRaisesMessage(
+            ValidationError,
+            "Indian regional prices must use USD",
+        ):
+            regional_price.full_clean()
 
     def test_exact_country_override_takes_priority_over_europe_price(self):
         plan = BillingPlan.objects.get(code="monthly")
@@ -89,7 +109,7 @@ class BillingPlanTests(TestCase):
             "US": "$0",
             "GB": "£0",
             "DE": "€0",
-            "IN": "₹0",
+            "IN": "$0",
         }
 
         for country_code, expected_price in expected_prices.items():
@@ -119,6 +139,7 @@ class BillingPlanTests(TestCase):
 
         request = response.wsgi_request
         self.assertEqual(get_request_country_code(request), "IN")
+        self.assertEqual(pricing_region_for_country("IN"), "IN")
         self.assertEqual(pricing_region_for_country("FR"), "EU")
         self.assertEqual(pricing_region_for_country("US"), "US")
 
