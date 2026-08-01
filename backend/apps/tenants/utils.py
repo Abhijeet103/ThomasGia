@@ -59,6 +59,14 @@ def resolve_tenant_from_host(host: str) -> Tenant | None:
     if not normalized:
         return get_default_tenant()
 
+    base_domain = normalize_host(
+        getattr(settings, "TENANT_BASE_DOMAIN", default_tenant_domain())
+    )
+    if normalized in {base_domain, f"www.{base_domain}"}:
+        # The platform hostname is configuration-owned. Keep it available even
+        # when an older database was seeded with a localhost or previous domain.
+        return get_default_tenant()
+
     tenant = Tenant.objects.filter(is_active=True, primary_domain=normalized).first()
     if tenant:
         return tenant

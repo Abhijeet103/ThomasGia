@@ -196,6 +196,24 @@ class TenantAccessFlowTests(TestCase):
         self.assertFalse(TenantMembership.objects.exists())
         self.assertTrue(TenantUser.objects.filter(tenant=self.platform, identity=self.user).exists())
 
+    def test_configured_platform_domain_survives_stale_database_domain(self):
+        self.platform.primary_domain = "legacy.example.com"
+        self.platform.save(update_fields=("primary_domain", "updated_at"))
+        self.client.force_login(self.user)
+
+        response = self.client.get("/practice/", HTTP_HOST="mindmetric.store")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.wsgi_request.tenant, self.platform)
+
+    def test_www_platform_domain_resolves_to_default_tenant(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get("/practice/", HTTP_HOST="www.mindmetric.store")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.wsgi_request.tenant, self.platform)
+
     def test_same_login_has_distinct_platform_and_institution_user_entries(self):
         tenant = self.create_institution(prefix="demo-profile")
         platform_client = Client()
