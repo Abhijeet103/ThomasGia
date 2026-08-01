@@ -80,7 +80,33 @@ class BillingPlanTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "£6.75")
+        self.assertContains(response, "<strong>£0</strong>", html=True)
         self.assertEqual(self.client.session["billing_country_code"], "GB")
+
+    @override_settings(BILLING_TRUST_PROXY_COUNTRY_HEADERS=True)
+    def test_free_plan_uses_each_supported_regional_currency(self):
+        expected_prices = {
+            "US": "$0",
+            "GB": "£0",
+            "DE": "€0",
+            "IN": "₹0",
+        }
+
+        for country_code, expected_price in expected_prices.items():
+            with self.subTest(country_code=country_code):
+                self.client.cookies.clear()
+                response = self.client.get(
+                    "/pricing/",
+                    HTTP_HOST="mindmetric.store",
+                    HTTP_CF_IPCOUNTRY=country_code,
+                )
+
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(
+                    response,
+                    f"<strong>{expected_price}</strong>",
+                    html=True,
+                )
 
     @override_settings(BILLING_TRUST_PROXY_COUNTRY_HEADERS=True)
     def test_country_detection_is_saved_in_session(self):

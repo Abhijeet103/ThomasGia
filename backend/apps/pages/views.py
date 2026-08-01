@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import asdict
+from decimal import Decimal
 
 from allauth.account.forms import LoginForm
 from django.conf import settings
@@ -24,6 +25,7 @@ from backend.apps.billing.services import (
     stripe_is_configured,
     sync_user_subscription_access,
 )
+from backend.apps.billing.models import BillingCurrency, format_money
 from backend.apps.billing.regions import get_request_country_code
 from backend.apps.tenants.utils import get_default_tenant
 from backend.apps.tenants.services import is_institution_tenant, tenant_allows_assessment
@@ -352,6 +354,9 @@ class PricingPageView(TemplateView):
         if self.request.user.is_authenticated:
             sync_user_subscription_access(self.request.user)
             active_subscription = self.request.user.subscriptions.filter(status="active").order_by("-updated_at").first()
+        plans = _visible_frontend_plans(self.request, active_subscription)
+        regional_currency = plans[0]["currency"] if plans else BillingCurrency.USD
+        free_price_display = format_money(regional_currency, Decimal("0")).removesuffix(".00")
         context.update(
             {
                 "page_title": "Psychometric Test Practice Plans & Pricing | MindMetric",
@@ -360,7 +365,8 @@ class PricingPageView(TemplateView):
                     "test practice, including timed drills and full mock tests."
                 ),
                 "active_subscription": active_subscription,
-                "plans": _visible_frontend_plans(self.request, active_subscription),
+                "plans": plans,
+                "free_price_display": free_price_display,
                 "paypal_enabled": paypal_is_configured(),
                 "stripe_enabled": stripe_is_configured(),
                 "contact_form": SaleInquiryForm(initial={**_contact_form_initial(self.request, "pricing"), "next": self.request.path}),
