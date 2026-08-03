@@ -1,0 +1,29 @@
+{% if assessment_slug == "prepgia" or assessment_slug == "ccat" %}
+    <div class="assessment-guide-toolbar">
+        <div class="section-help-wrap assessment-guide-wrap">
+            <button
+                type="button"
+                class="section-help-button assessment-guide-button"
+                data-section-help-toggle
+                aria-expanded="false"
+                aria-controls="assessment-guide-panel"
+            >
+                Preparation guide <span class="section-help-chevron" aria-hidden="true">&#9662;</span>
+            </button>
+            <aside
+                class="section-help-popover assessment-guide-popover"
+                id="assessment-guide-panel"
+                data-section-help-panel
+                role="dialog"
+                aria-label="{{ assessment.title }} preparation guide"
+                hidden
+            >
+                {% if assessment_slug == "prepgia" %}
+                    {% include "partials/thomas_gia_seo_guide.html" %}
+                {% else %}
+                    {% include "partials/ccat_seo_guide.html" %}
+                {% endif %}
+            </aside>
+        </div>
+    </div>
+{% endif %}

@@ -2,11 +2,7 @@
 
 {% block content %}
 <section class="content-section">
-    {% if assessment_slug == "prepgia" %}
-        {% include "partials/thomas_gia_seo_intro.html" %}
-    {% elif assessment_slug == "ccat" %}
-        {% include "partials/ccat_seo_intro.html" %}
-    {% endif %}
+    {% include "partials/assessment_guide_popover.html" %}
 
     <article class="card practice-full-banner">
         <div class="practice-full-banner-copy">
@@ -39,11 +35,7 @@
     </article>
 
     <div class="practice-section-header top-gap"{% if assessment_slug == "prepgia" %} id="gia-practice-modules"{% elif assessment_slug == "ccat" %} id="ccat-practice-modules"{% endif %}>
-        {% if assessment_slug == "prepgia" or assessment_slug == "ccat" %}
-            <h2 class="section-title practice-sections-title">{{ assessment.title }} {{ assessment.module_label }}</h2>
-        {% else %}
-            <h1 class="section-title practice-sections-title">{{ assessment.title }} {{ assessment.module_label }}</h1>
-        {% endif %}
+        <h1 class="section-title practice-sections-title">{{ assessment.title }} {{ assessment.module_label }}</h1>
         <p class="practice-started-summary">{{ sections_started }} of {{ sections_total }} modules started</p>
     </div>
 
@@ -111,10 +103,5 @@
         {% endfor %}
     </div>
 
-    {% if assessment_slug == "prepgia" %}
-        {% include "partials/thomas_gia_seo_guide.html" %}
-    {% elif assessment_slug == "ccat" %}
-        {% include "partials/ccat_seo_guide.html" %}
-    {% endif %}
 </section>
 {% endblock %}

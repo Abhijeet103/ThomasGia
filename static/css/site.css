@@ -30,40 +30,6 @@
   --font-body: "Inter", Arial, Helvetica, sans-serif;
 }
 
-.assessment-seo-intro {
-  max-width: 900px;
-  margin: 0 auto 34px;
-  text-align: center;
-}
-
-.assessment-seo-intro h1 {
-  margin: 8px 0 14px;
-  color: var(--ink);
-  font-family: "Fraunces", Georgia, serif;
-  font-size: clamp(2.5rem, 5vw, 4.75rem);
-  line-height: 0.98;
-  letter-spacing: -0.045em;
-}
-
-.assessment-seo-lead {
-  max-width: 760px;
-  margin: 0 auto;
-  color: var(--muted);
-  font-size: clamp(1.05rem, 1.8vw, 1.25rem);
-  line-height: 1.65;
-}
-
-.assessment-seo-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  margin-top: 24px;
-  color: var(--muted);
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
 .assessment-seo-guide {
   margin-top: 48px;
   padding: clamp(28px, 5vw, 64px);
@@ -151,9 +117,90 @@
   line-height: 1.55;
 }
 
+.assessment-guide-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.assessment-guide-button {
+  border-color: rgba(46, 125, 107, 0.46);
+  color: var(--brand-dark);
+}
+
+.assessment-guide-popover {
+  width: min(620px, calc(100vw - 40px));
+  max-height: min(76vh, 780px);
+}
+
+.assessment-seo-guide--popover {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.assessment-seo-guide--popover .assessment-seo-guide-heading {
+  max-width: none;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(216, 212, 198, 0.82);
+}
+
+.assessment-seo-guide--popover .assessment-seo-guide-heading .eyebrow {
+  margin: 0 0 5px;
+  font-size: 0.72rem;
+}
+
+.assessment-seo-guide--popover h2 {
+  margin: 0 0 10px;
+  font-size: clamp(1.55rem, 3vw, 2rem);
+}
+
+.assessment-seo-guide--popover .assessment-seo-guide-heading > p:last-child,
+.assessment-seo-guide--popover .assessment-seo-feature-grid p,
+.assessment-seo-guide--popover .assessment-seo-faqs p {
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.assessment-seo-guide--popover .assessment-seo-feature-grid {
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin: 18px 0 24px;
+}
+
+.assessment-seo-guide--popover .assessment-seo-feature-grid article {
+  padding: 16px;
+  border-radius: 16px;
+}
+
+.assessment-seo-guide--popover .assessment-seo-faqs > h2 {
+  font-size: 1.35rem;
+}
+
+.assessment-seo-guide--popover .assessment-seo-faqs summary {
+  padding: 14px 30px 14px 0;
+  font-size: 0.9rem;
+}
+
+.assessment-seo-guide--popover .assessment-seo-faqs details p {
+  margin-bottom: 16px;
+}
+
+.assessment-seo-guide--popover .assessment-seo-disclaimer {
+  margin-top: 22px;
+  font-size: 0.76rem;
+}
+
 @media (max-width: 820px) {
-  .assessment-seo-actions {
-    flex-direction: column;
+  .assessment-guide-toolbar {
+    margin-bottom: 12px;
+  }
+
+  .assessment-guide-popover {
+    width: auto;
   }
 
   .assessment-seo-feature-grid {
